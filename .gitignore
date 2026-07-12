@@ -1,0 +1,23 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+
+# 虚拟环境
+.venv/
+venv/
+env/
+
+# 依赖库（绿色版随包携带，源码仓库不纳入）
+libs/
+
+# 运行时数据（应用首次运行会自动创建为空数组）
+data/designs.json
+
+# 日志与系统文件
+*.log
+.DS_Store
+Thumbs.db
