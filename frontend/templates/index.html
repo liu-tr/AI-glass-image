@@ -354,8 +354,8 @@
                         return `均匀度: ${p.objectives.wall_uniformity}%<br>能耗: ${p.objectives.energy_consumption}<br>废品率: ${p.objectives.defect_rate}%<br>耐热性: ${p.objectives.heat_resistance}%`;
                     }
                 },
-                xAxis: { name: '壁厚均匀度 (%)', type: 'value' },
-                yAxis: { name: '加工能耗', type: 'value' },
+                xAxis: { name: '壁厚均匀度 (%)', type: 'value', scale: true },
+                yAxis: { name: '加工能耗', type: 'value', scale: true },
                 series: [{
                     name: '帕累托解', type: 'scatter', data: data,
                     symbolSize: 12, itemStyle: { color: '#667eea' }
