@@ -7,6 +7,7 @@ import sys
 sys.path.append(os.path.join(os.path.dirname(__file__), 'src'))
 
 from services.image_generator import GlassImageGenerator
+from services.input_guard import is_input_blocked, find_blocked_term, build_rejection_image
 from services.mopso_optimizer import MOPSOOptimizer
 from services.objective_functions import (
     calculate_wall_uniformity,
@@ -45,7 +46,12 @@ def generate_images():
         if not prompt:
             return jsonify({"error": "请输入设计需求"}), 400
 
-        if USE_REAL_API:
+        # 输入合规检查：命中工业负面词则直接返回 4 张拒绝提示图
+        blocked_term = find_blocked_term(prompt)
+        if blocked_term:
+            reason = f"输入含工业敏感词「{blocked_term}」"
+            images = [build_rejection_image(reason, blocked_term) for _ in range(4)]
+        elif USE_REAL_API:
             images = generator.generate(prompt, num_images=4)
         else:
             # 模拟生成图片（返回示例图片）

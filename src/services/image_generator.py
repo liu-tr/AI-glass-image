@@ -52,29 +52,38 @@ class GlassImageGenerator:
         return self._generate_sd(prompt, num_images)
 
     def _generate_pollinations(self, prompt, num_images=4):
-        """Pollinations：服务端顺序抓取图片并转为base64 data URI。
+        """Pollinations：串行抓取 + 4 张 prompt 视角变体。
 
-        顺序请求（而非浏览器并发）可避开免费档限流；再对每张图做重试，
-        彻底失败时兜底占位图，保证前端不出现破图。
+        反复实测后结论：Pollinations 免费档对同 IP 的实际并发上限约 1。
+        任何"分批并发"都会让快的那张被限流拖到 ~130s 等慢的那张，反而更慢。
+        串行节奏下单张 2~10s，4 张 ≈ 8~45s，且 4/4 真出图。
+
+        4 张 prompt 末尾分别加 --view front/side/top/three-quarter 微扰，
+        避免 Pollinations 把 4 个相同 prompt（仅 seed 不同）判为重复。
         """
-        full_prompt = self.positive_template.format(prompt=prompt)
-        encoded = urllib.parse.quote(full_prompt, safe='')
+        full_prompt_base = self.positive_template.format(prompt=prompt)
+
+        view_suffixes = [
+            " --view front",
+            " --view side",
+            " --view top",
+            " --view three-quarter",
+        ][:num_images]
 
         images = []
-        for _ in range(num_images):
+        for i in range(num_images):
             seed = random.randint(1, 1_000_000)
-            url = (
-                f"{self.POLLINATIONS_BASE}{encoded}"
-                f"?width=512&height=512&nologo=true&seed={seed}&model=turbo"
-            )
+            encoded = urllib.parse.quote(full_prompt_base + view_suffixes[i], safe='')
+            url = (f"{self.POLLINATIONS_BASE}{encoded}"
+                   f"?width=512&height=512&nologo=true&seed={seed}&model=turbo")
             images.append(self._fetch_as_data_uri(url))
         return images
 
-    def _fetch_as_data_uri(self, url, retries=2):
-        """抓取图片字节转data URI；失败重试，最终失败返回占位图URL。"""
+    def _fetch_as_data_uri(self, url, retries=1):
+        """抓取图片字节转data URI。串行阶段重试 1 次避免 ORB 破图；兜底为占位图。"""
         for attempt in range(retries + 1):
             try:
-                resp = requests.get(url, timeout=90)
+                resp = requests.get(url, timeout=60)
                 resp.raise_for_status()
                 content_type = resp.headers.get('Content-Type', '')
                 if content_type.startswith('image/') and resp.content:
