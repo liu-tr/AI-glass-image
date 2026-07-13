@@ -24,7 +24,7 @@
             display: grid;
             grid-template-columns: 1fr 1fr;
             gap: 20px;
-            max-height: calc(100vh - 140px);
+            max-height: calc(100vh - 80px);
             align-items: stretch;
         }
         .card {
@@ -88,7 +88,14 @@
             min-height: 0;
             overflow-y: auto;
             padding-right: 4px;
+            /* 加粗滚动条，让用户明显看到可滚动 */
+            scrollbar-width: thin;
+            scrollbar-color: #c1c9d4 #f5f7fa;
         }
+        .design-list::-webkit-scrollbar { width: 8px; }
+        .design-list::-webkit-scrollbar-track { background: #f5f7fa; border-radius: 4px; }
+        .design-list::-webkit-scrollbar-thumb { background: #c1c9d4; border-radius: 4px; }
+        .design-list::-webkit-scrollbar-thumb:hover { background: #8a919e; }
         .design-item {
             padding: 14px; border: 1px solid #eaecef; border-radius: 8px; margin-bottom: 10px;
             cursor: pointer; transition: border-color 0.2s;
