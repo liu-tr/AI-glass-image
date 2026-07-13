@@ -19,8 +19,14 @@
         .header { margin-bottom: 28px; }
         .header h1 { font-size: 22px; font-weight: 600; color: #1f2329; }
         .header p { font-size: 14px; color: #8a919e; margin-top: 6px; }
-        /* 左右两列等高对齐：左列由内容撑开，右列 stretch 跟齐 */
-        .main-content { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; align-items: stretch; }
+        /* 左右两列各自滚动，避免设计列表过长撑爆整页 */
+        .main-content {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+            max-height: calc(100vh - 120px);
+            align-items: start;
+        }
         .card {
             background: #fff; border: 1px solid #eaecef; border-radius: 10px; padding: 24px;
             display: flex; flex-direction: column; min-height: 0;
@@ -75,7 +81,13 @@
         }
         .stat-item:last-child { border-bottom: none; }
         /* 列表高度跟随左侧图片区自适应，等高对齐 */
-        .design-list { flex: 1; min-height: 0; overflow-y: auto; }
+        .design-list {
+            flex: 1;
+            min-height: 0;
+            max-height: calc(100vh - 200px);
+            overflow-y: auto;
+            padding-right: 4px;
+        }
         .design-item {
             padding: 14px; border: 1px solid #eaecef; border-radius: 8px; margin-bottom: 10px;
             cursor: pointer; transition: border-color 0.2s;
