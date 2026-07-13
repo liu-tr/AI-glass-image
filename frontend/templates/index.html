@@ -91,9 +91,9 @@
         .stat-item:last-child { border-bottom: none; }
         /* 设计列表独立滚动：内容超长时在 card 内滚动，不撑爆整页 */
         .design-list {
-            flex: 1;
+            flex: 1 1 0;
             min-height: 0;
-            overflow-y: scroll;  /* 总是显示滚动条，避免内容刚好不溢出时滚动条闪烁 */
+            overflow-y: auto;
             padding-right: 4px;
         }
         .design-item {
