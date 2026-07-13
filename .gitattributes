@@ -1,0 +1,7 @@
+# Force CRLF for batch files (Windows cmd requires it)
+*.bat text eol=crlf
+*.cmd text eol=crlf
+
+# Force LF for cross-platform scripts
+*.sh   text eol=lf
+*.py   text eol=lf
