@@ -168,4 +168,5 @@ def delete_design(design_id):
 
 
 if __name__ == '__main__':
-    app.run(debug=True, host='0.0.0.0', port=5000)
+    # debug=False 避免 stat 文件变化触发 reload worker 多开，占满 5000 端口
+    app.run(debug=False, host='0.0.0.0', port=5000)
