@@ -23,15 +23,24 @@ CORS(app)
 # 初始化服务
 db = JSONDatabase()
 
-# 使用 Pollinations.AI 文生图（免注册、免API key）。以后要换服务时改这里的初始化参数即可。
-generator = GlassImageGenerator(provider="pollinations")
+# 文生图服务配置
+#   - "pollinations"：在线服务，免注册免 key（默认网络模式）
+#   - "sd_webui"    ：本地 SD WebUI 整合包（B 站秋葉整合包），需先启动 webui-user.bat
+# 切换时只需改下面的 provider 与 api_url 即可。
+SD_WEBUI_TXT2IMG = "http://127.0.0.1:7860/sdapi/v1/txt2img"
+generator = GlassImageGenerator(
+    provider="sd_webui",
+    api_url=SD_WEBUI_TXT2IMG,
+)
 try:
     generator.test_connection()
     USE_REAL_API = True
-    print("✓ 已连接到 Pollinations 文生图服务")
+    print(f"✓ 已连接 SD WebUI: {SD_WEBUI_TXT2IMG}")
 except Exception as e:
     USE_REAL_API = False
-    print(f"⚠ 文生图服务不可用，使用模拟模式: {e}")
+    print(f"⚠ SD WebUI 不可用，使用模拟模式: {e}")
+    print("  请确认：①已启动 webui-user.bat ②看到 'Running on local URL: http://127.0.0.1:7860' "
+          "③整合包内 models/Stable-diffusion/ 已放入 safetensors 模型")
 
 
 @app.route('/')

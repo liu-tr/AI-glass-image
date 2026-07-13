@@ -41,9 +41,20 @@ class GlassImageGenerator:
                 raise Exception("Pollinations服务暂不可用")
             return
 
-        response = requests.get(self.api_url.replace('/txt2img', ''), timeout=5)
+        # SD WebUI：用 /sdapi/v1/options 探活（仅在 --api 启动时存在）
+        # 若返回 404，说明用户没在 webui-user.bat 加 --api 参数
+        base = self.api_url.split("/sdapi/v1/")[0]
+        try:
+            response = requests.get(f"{base}/sdapi/v1/options", timeout=5)
+        except requests.exceptions.RequestException as e:
+            raise Exception(f"无法连接 SD WebUI ({base}): {e}")
+        if response.status_code == 404:
+            raise Exception(
+                "SD WebUI 启用了页面但未开启 API。请在 webui-user.bat 的 "
+                "set COMMANDLINE_ARGS= 末尾加上 --api 后重启"
+            )
         if response.status_code != 200:
-            raise Exception("API连接失败")
+            raise Exception(f"SD WebUI 探活失败，HTTP {response.status_code}")
 
     def generate(self, prompt, num_images=4):
         """调用文生图API生成图片，返回图片URL或data URI列表。"""
@@ -96,7 +107,11 @@ class GlassImageGenerator:
         return f"https://picsum.photos/seed/{random.randint(1, 100000)}/512/512"
 
     def _generate_sd(self, prompt, num_images=4):
-        """Stable Diffusion WebUI txt2img，返回base64 data URI列表。"""
+        """Stable Diffusion WebUI txt2img，返回base64 data URI列表。
+
+        适配 B 站秋葉整合包（A1111 WebUI），默认地址 http://127.0.0.1:7860。
+        启动时需要在 webui-user.bat 加 --api（整合包默认已带）。
+        """
         full_prompt = self.positive_template.format(prompt=prompt)
 
         payload = {
@@ -105,26 +120,37 @@ class GlassImageGenerator:
             "batch_size": num_images,
             "width": 512,
             "height": 512,
-            "seed": -1,
-            "steps": 20,
-            "cfg_scale": 7
+            "seed": -1,                 # -1 = 随机
+            "steps": 25,                # SD1.5 出图 20~30 比较稳定
+            "cfg_scale": 7,
+            "sampler_name": "Euler a",  # 整合包预置，秋葉默认推荐
+            "restore_faces": False,
+            "enable_hr": False,
         }
 
-        headers = {"Authorization": f"Bearer {self.api_key}"} if self.api_key else {}
+        headers = {"Content-Type": "application/json"}
+        if self.api_key:
+            headers["Authorization"] = f"Bearer {self.api_key}"
 
         try:
-            response = requests.post(self.api_url, json=payload, headers=headers, timeout=60)
+            # 本地 GPU 推理 4 张约 10~30s，给足超时
+            response = requests.post(self.api_url, json=payload, headers=headers, timeout=180)
             response.raise_for_status()
-
-            result = response.json()
-            if "images" in result:
-                return [f"data:image/png;base64,{img}" for img in result["images"]]
-            elif "error" in result:
-                raise Exception(result["error"])
-            else:
-                raise Exception("未知错误")
+        except requests.exceptions.Timeout:
+            raise Exception("SD WebUI 生成超时（>180s）。请检查 GPU 是否在跑、模型是否过大")
         except requests.exceptions.RequestException as e:
-            raise Exception(f"请求失败: {str(e)}")
+            raise Exception(f"请求 SD WebUI 失败: {e}")
+
+        try:
+            result = response.json()
+        except ValueError:
+            raise Exception(f"SD WebUI 返回非 JSON: {response.text[:200]}")
+
+        if "images" in result and result["images"]:
+            return [f"data:image/png;base64,{img}" for img in result["images"]]
+        if "error" in result:
+            raise Exception(f"SD WebUI 报错: {result['error']}")
+        raise Exception("SD WebUI 返回为空")
 
     def generate_mock(self, prompt, num_images=4):
         """模拟生成图片（当API不可用时使用占位图片）"""
