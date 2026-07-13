@@ -19,19 +19,16 @@
         .header { margin-bottom: 28px; }
         .header h1 { font-size: 22px; font-weight: 600; color: #1f2329; }
         .header p { font-size: 14px; color: #8a919e; margin-top: 6px; }
-        /* 左右两列等高对齐：容器限高，card 撑满，内部独立滚动 */
+        /* 左右两列等高：右列内容多时左列 card 同步撑高，不留白 */
         .main-content {
             display: grid;
             grid-template-columns: 1fr 1fr;
             gap: 20px;
-            max-height: calc(100vh - 80px);
             align-items: stretch;
         }
         .card {
             background: #fff; border: 1px solid #eaecef; border-radius: 10px; padding: 24px;
-            display: flex; flex-direction: column; min-height: 0;
-            height: 100%;
-            overflow: hidden;
+            display: flex; flex-direction: column;
         }
         .card-title {
             font-size: 16px; font-weight: 600; color: #1f2329; margin-bottom: 20px;
@@ -82,20 +79,10 @@
             color: #4e5969; border-bottom: 1px solid #eaecef;
         }
         .stat-item:last-child { border-bottom: none; }
-        /* 设计列表独立滚动：card 高度 = 容器高度，列表超出滚动 */
+        /* 设计列表：跟左列等高，内容自然撑开，不滚动 */
         .design-list {
             flex: 1;
-            min-height: 0;
-            overflow-y: auto;
-            padding-right: 4px;
-            /* 加粗滚动条，让用户明显看到可滚动 */
-            scrollbar-width: thin;
-            scrollbar-color: #c1c9d4 #f5f7fa;
         }
-        .design-list::-webkit-scrollbar { width: 8px; }
-        .design-list::-webkit-scrollbar-track { background: #f5f7fa; border-radius: 4px; }
-        .design-list::-webkit-scrollbar-thumb { background: #c1c9d4; border-radius: 4px; }
-        .design-list::-webkit-scrollbar-thumb:hover { background: #8a919e; }
         .design-item {
             padding: 14px; border: 1px solid #eaecef; border-radius: 8px; margin-bottom: 10px;
             cursor: pointer; transition: border-color 0.2s;
