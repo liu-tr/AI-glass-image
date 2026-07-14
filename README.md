@@ -38,24 +38,34 @@ python app.py
 ## 项目结构
 
 ```
-玻璃杯AI生成可视化设计系统\
-├── app.py                          # Flask 入口（6 个 REST API）
-├── run.bat                         # Windows 一键启动
+玻璃杯AI生成可视化设计系统/
+├── app.py                          # Flask 入口（6 个 REST API + SD WebUI 探测/降级）
+├── run.bat                         # Windows 一键启动（自动检测+等待 SD WebUI）
+├── check_env.bat                   # 启动前环境自检（路径/端口/API 三步）
+├── diag.bat                        # 运行中诊断（端口占用/进程/HTTP 健康）
 ├── requirements.txt
 ├── README.md
-├── 部署文档.md
-├── frontend\templates\
-│   └── index.html                  # 前端单页（HTML + CSS + 原生 JS + ECharts）
-├── src\services\
-│   ├── image_generator.py          # 文生图（Pollinations 接入）
-│   ├── input_guard.py              # 工业负面词预检
-│   ├── mopso_optimizer.py          # MOPSO 多目标优化
-│   ├── objective_functions.py      # 4 项工艺目标函数
-│   └── database.py                 # JSON 文件数据库
-└── data\
+├── 部署文档.md                       # 完整部署+FAQ
+├── .gitattributes                   # 强制 .bat 文件 CRLF
+├── .gitignore
+├── frontend/
+│   └── templates/
+│       └── index.html              # 前端单页（HTML + CSS + 原生 JS + ECharts）
+├── src/
+│   ├── __init__.py
+│   └── services/
+│       ├── __init__.py
+│       ├── image_generator.py      # 文生图（SD WebUI / Pollinations 接入）
+│       ├── input_guard.py          # 工业负面词预检 + SVG 拒绝图
+│       ├── mopso_optimizer.py      # MOPSO 多目标优化
+│       ├── objective_functions.py  # 4 项工艺目标函数
+│       └── database.py             # JSON 文件数据库
+└── data/
     ├── .gitkeep
     └── designs.json                # 运行时生成（已 gitignore）
 ```
+
+`.launcher/` 是秋葉 A绘世启动器便携版的解压目录（47 个 DLL/exe），**不在仓库内**，已在 .gitignore 排除。
 
 ---
 

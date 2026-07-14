@@ -21,3 +21,6 @@ data/designs.json
 *.log
 .DS_Store
 Thumbs.db
+
+# 秋葉 A绘世启动器便携版（解压到项目根，体积大且与代码无关）
+.launcher/

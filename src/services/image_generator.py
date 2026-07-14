@@ -123,7 +123,7 @@ class GlassImageGenerator:
             "height": 512,
             "seed": -1,                 # -1 = 随机
             "steps": 25,                # SD1.5 出图 20~30 比较稳定
-            "cfg_scale": 9,
+            "cfg_scale": 11,
             "sampler_name": "Euler a",  # 整合包预置，秋葉默认推荐
             "restore_faces": False,
             "enable_hr": False,
