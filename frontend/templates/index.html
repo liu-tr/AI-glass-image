@@ -113,6 +113,30 @@
         .tag { display: inline-block; padding: 2px 10px; border-radius: 12px; font-size: 12px; margin-left: 8px; }
         .tag.optimized { background: #eaf3ff; color: #4c6ef5; }
         .tag.pending { background: #fff4e6; color: #e8850c; }
+
+        /* 模式切换 Tab */
+        .mode-tabs { display: flex; gap: 0; margin-bottom: 16px; border-bottom: 1px solid #eaecef; }
+        .mode-tabs .tab {
+            padding: 10px 20px; background: none; border: none; font-size: 14px;
+            color: #8a919e; cursor: pointer; transition: color 0.2s, border-color 0.2s;
+            border-bottom: 2px solid transparent; margin-bottom: -1px;
+        }
+        .mode-tabs .tab:hover { color: #4c6ef5; }
+        .mode-tabs .tab.active { color: #4c6ef5; border-bottom-color: #4c6ef5; font-weight: 600; }
+
+        /* 图生图选项区 */
+        .img2img-options { margin-top: 12px; padding: 14px; background: #fafbff; border-radius: 8px; border: 1px solid #e8ecf5; }
+        .init-source-row { display: flex; gap: 16px; margin-bottom: 12px; font-size: 13px; color: #4e5969; }
+        .init-source-row label { display: flex; align-items: center; gap: 4px; cursor: pointer; }
+        .init-source-row input[type=radio] { cursor: pointer; }
+        .file-input-wrapper { margin-bottom: 12px; }
+        .file-input-wrapper input[type=file] { font-size: 12px; color: #4e5969; }
+        .last-image-preview { margin-bottom: 12px; }
+        .last-image-preview img { max-width: 120px; max-height: 120px; border-radius: 6px; border: 1px solid #dcdfe6; }
+        .slider-row { display: flex; flex-direction: column; gap: 6px; }
+        .slider-row label { font-size: 13px; color: #4e5969; display: flex; justify-content: space-between; }
+        .slider-row label span { color: #4c6ef5; font-weight: 600; }
+        .slider-row input[type=range] { width: 100%; cursor: pointer; }
     </style>
 </head>
 <body>
@@ -126,9 +150,29 @@
             <!-- 左侧：设计生成 -->
             <div class="card">
                 <div class="card-title">个性化设计生成</div>
+                <div class="mode-tabs">
+                    <button class="tab active" data-mode="txt2img">文生图</button>
+                    <button class="tab" data-mode="img2img">图生图</button>
+                </div>
                 <div class="input-group">
                     <label for="prompt">输入设计需求（中文）：</label>
                     <textarea id="prompt" placeholder="例如：简约风格，圆柱形，透明玻璃，适合咖啡饮用..."></textarea>
+                </div>
+                <div id="img2imgOptions" class="img2img-options" style="display: none;">
+                    <div class="init-source-row">
+                        <label><input type="radio" name="init_source" value="upload" checked> 上传本地图</label>
+                        <label><input type="radio" name="init_source" value="last"> 复用上次生成图</label>
+                    </div>
+                    <div id="uploadArea" class="file-input-wrapper">
+                        <input type="file" id="initImageUpload" accept="image/*">
+                    </div>
+                    <div id="lastArea" class="last-image-preview" style="display: none;">
+                        <img id="lastImagePreview" src="" alt="上次生成图">
+                    </div>
+                    <div class="slider-row">
+                        <label>重绘强度 <span id="strengthValue">0.55</span></label>
+                        <input type="range" id="denoisingStrength" min="0.0" max="1.0" step="0.05" value="0.55">
+                    </div>
                 </div>
                 <button class="btn" id="generateBtn">生成设计方案</button>
 
@@ -205,6 +249,8 @@
         let selectedImageIndex = -1;
         let convergenceChart = null;
         let paretoChart = null;
+        let lastGeneratedImages = [];   // 缓存最近一次生成的 4 张图（供图生图复用）
+        let currentMode = 'txt2img';    // 'txt2img' | 'img2img'
 
         const paramRanges = {
             "heating_temp": "550-700°C",
@@ -238,12 +284,50 @@
             document.getElementById('imageArea').style.display = 'none';
 
             try {
-                const response = await fetch('/api/generate', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ prompt })
-                });
-                const data = await response.json();
+                let response, data;
+                if (currentMode === 'img2img') {
+                    // 图生图：multipart/form-data
+                    const initSource = document.querySelector('input[name="init_source"]:checked').value;
+                    const strength = document.getElementById('denoisingStrength').value;
+                    let initBlob;
+
+                    if (initSource === 'upload') {
+                        const fileInput = document.getElementById('initImageUpload');
+                        if (!fileInput.files || !fileInput.files[0]) {
+                            alert('请先选择一张起始图');
+                            btn.disabled = false;
+                            document.getElementById('loadingArea').style.display = 'none';
+                            return;
+                        }
+                        initBlob = fileInput.files[0];
+                    } else {
+                        if (!lastGeneratedImages.length) {
+                            alert('暂无上次生成图可复用，请先文生图或选择上传');
+                            btn.disabled = false;
+                            document.getElementById('loadingArea').style.display = 'none';
+                            return;
+                        }
+                        // 把第一张 data URI 转成 Blob
+                        initBlob = await (await fetch(lastGeneratedImages[0])).blob();
+                    }
+
+                    const fd = new FormData();
+                    fd.append('prompt', prompt);
+                    fd.append('denoising_strength', strength);
+                    fd.append('init_image', initBlob, 'init.png');
+
+                    response = await fetch('/api/img2img', { method: 'POST', body: fd });
+                    data = await response.json();
+                } else {
+                    // 文生图：JSON
+                    response = await fetch('/api/generate', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ prompt })
+                    });
+                    data = await response.json();
+                }
+
                 if (data.success) {
                     currentDesign = data.design;
                     displayImages(data.design.images);
@@ -272,6 +356,14 @@
             document.getElementById('imageArea').style.display = 'block';
             document.getElementById('optimizeBtn').style.display = 'none';
             selectedImageIndex = -1;
+            // 缓存供图生图复用（过滤掉拒绝图：拒绝图是 SVG data URI，但这里统一缓存也无害，
+            // 后续如果用户点"复用上次"看到的是拒绝图也不影响 img2img 行为——SD WebUI 会正常处理）
+            lastGeneratedImages = images.slice();
+            // 刷新上次图预览
+            const preview = document.getElementById('lastImagePreview');
+            if (lastGeneratedImages.length) {
+                preview.src = lastGeneratedImages[0];
+            }
         }
 
         function selectImage(index) {
@@ -458,6 +550,37 @@
             window.addEventListener('resize', () => {
                 if (convergenceChart) convergenceChart.resize();
                 if (paretoChart) paretoChart.resize();
+            });
+
+            // 模式 Tab 切换
+            document.querySelectorAll('.mode-tabs .tab').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    document.querySelectorAll('.mode-tabs .tab').forEach(t => t.classList.remove('active'));
+                    btn.classList.add('active');
+                    currentMode = btn.dataset.mode;
+                    document.getElementById('img2imgOptions').style.display =
+                        currentMode === 'img2img' ? 'block' : 'none';
+                });
+            });
+
+            // 滑块显示同步
+            const slider = document.getElementById('denoisingStrength');
+            const sliderVal = document.getElementById('strengthValue');
+            slider.addEventListener('input', () => { sliderVal.textContent = slider.value; });
+
+            // 起始图源切换
+            document.querySelectorAll('input[name="init_source"]').forEach(r => {
+                r.addEventListener('change', () => {
+                    const useUpload = r.value === 'upload' && r.checked;
+                    const useLast = r.value === 'last' && r.checked;
+                    if (useUpload) {
+                        document.getElementById('uploadArea').style.display = 'block';
+                        document.getElementById('lastArea').style.display = 'none';
+                    } else if (useLast) {
+                        document.getElementById('uploadArea').style.display = 'none';
+                        document.getElementById('lastArea').style.display = 'block';
+                    }
+                });
             });
         });
     </script>

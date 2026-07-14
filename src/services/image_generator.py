@@ -1,23 +1,16 @@
 import requests
-import random
-import urllib.parse
 import base64
-import time
 
 
 class GlassImageGenerator:
-    """玻璃杯文生图生成器。
+    """玻璃杯文生图 / 图生图生成器。
 
-    provider:
-      - "pollinations": 使用 Pollinations.AI，免注册、免 API key，直接返回图片 URL（当前默认）。
-      - "sd_webui":     使用本地 / 远程 Stable Diffusion WebUI 的 txt2img 接口。
-    以后接入通义万相 / 硅基流动等带 key 的服务时，新增一个分支即可，app.py 只需改初始化参数。
+    仅接入本地 Stable Diffusion WebUI（A1111，需要启动时带 --api）。
+    - txt2img: POST /sdapi/v1/txt2img
+    - img2img: POST /sdapi/v1/img2img
     """
 
-    POLLINATIONS_BASE = "https://image.pollinations.ai/prompt/"
-
-    def __init__(self, provider="pollinations", api_url=None, api_key=None):
-        self.provider = provider
+    def __init__(self, api_url=None, api_key=None):
         self.api_url = api_url
         self.api_key = api_key
 
@@ -35,15 +28,9 @@ class GlassImageGenerator:
         )
 
     def test_connection(self):
-        """测试API连接。失败时抛异常，由上层降级为mock模式。"""
-        if self.provider == "pollinations":
-            response = requests.get("https://image.pollinations.ai/", timeout=8)
-            if response.status_code >= 500:
-                raise Exception("Pollinations服务暂不可用")
-            return
-
-        # SD WebUI：用 /sdapi/v1/options 探活（仅在 --api 启动时存在）
-        # 若返回 404，说明用户没在 webui-user.bat 加 --api 参数
+        """测试SD WebUI连接。用 /sdapi/v1/options 探活（仅在 --api 启动时存在）。
+        若返回 404，说明用户没在 webui-user.bat 加 --api 参数。
+        """
         base = self.api_url.split("/sdapi/v1/")[0]
         try:
             response = requests.get(f"{base}/sdapi/v1/options", timeout=5)
@@ -58,84 +45,27 @@ class GlassImageGenerator:
             raise Exception(f"SD WebUI 探活失败，HTTP {response.status_code}")
 
     def generate(self, prompt, num_images=4):
-        """调用文生图API生成图片，返回图片URL或data URI列表。"""
-        if self.provider == "pollinations":
-            return self._generate_pollinations(prompt, num_images)
+        """文生图（txt2img）。返回base64 data URI列表。"""
         return self._generate_sd(prompt, num_images)
 
-    def _generate_pollinations(self, prompt, num_images=4):
-        """Pollinations：串行抓取 + 4 张 prompt 视角变体。
+    def generate_img2img(self, init_image_b64, prompt, denoising_strength=0.55, num_images=4):
+        """图生图（img2img）。
 
-        反复实测后结论：Pollinations 免费档对同 IP 的实际并发上限约 1。
-        任何"分批并发"都会让快的那张被限流拖到 ~130s 等慢的那张，反而更慢。
-        串行节奏下单张 2~10s，4 张 ≈ 8~45s，且 4/4 真出图。
-
-        4 张 prompt 末尾分别加 --view front/side/top/three-quarter 微扰，
-        避免 Pollinations 把 4 个相同 prompt（仅 seed 不同）判为重复。
+        init_image_b64: base64 编码的起始图（不带 data:image/png;base64, 前缀）
+        denoising_strength: 0.0~1.0，越高越偏离原图
         """
-        full_prompt_base = self.positive_template.format(prompt=prompt)
+        return self._generate_img2img(init_image_b64, prompt, denoising_strength, num_images)
 
-        view_suffixes = [
-            " --view front",
-            " --view side",
-            " --view top",
-            " --view three-quarter",
-        ][:num_images]
-
-        images = []
-        for i in range(num_images):
-            seed = random.randint(1, 1_000_000)
-            encoded = urllib.parse.quote(full_prompt_base + view_suffixes[i], safe='')
-            url = (f"{self.POLLINATIONS_BASE}{encoded}"
-                   f"?width=512&height=512&nologo=true&seed={seed}&model=turbo")
-            images.append(self._fetch_as_data_uri(url))
-        return images
-
-    def _fetch_as_data_uri(self, url, retries=1):
-        """抓取图片字节转data URI。串行阶段重试 1 次避免 ORB 破图；兜底为占位图。"""
-        for attempt in range(retries + 1):
-            try:
-                resp = requests.get(url, timeout=60)
-                resp.raise_for_status()
-                content_type = resp.headers.get('Content-Type', '')
-                if content_type.startswith('image/') and resp.content:
-                    b64 = base64.b64encode(resp.content).decode('ascii')
-                    return f"data:{content_type};base64,{b64}"
-            except requests.exceptions.RequestException:
-                pass
-            if attempt < retries:
-                time.sleep(2)
-        return f"https://picsum.photos/seed/{random.randint(1, 100000)}/512/512"
-
-    def _generate_sd(self, prompt, num_images=4):
-        """Stable Diffusion WebUI txt2img，返回base64 data URI列表。
-
-        适配 B 站秋葉整合包（A1111 WebUI），默认地址 http://127.0.0.1:7860。
-        启动时需要在 webui-user.bat 加 --api（整合包默认已带）。
-        """
-        full_prompt = self.positive_template.format(prompt=prompt)
-
-        payload = {
-            "prompt": full_prompt,
-            "negative_prompt": self.negative_prompt,
-            "batch_size": num_images,
-            "width": 512,
-            "height": 512,
-            "seed": -1,                 # -1 = 随机
-            "steps": 25,                # SD1.5 出图 20~30 比较稳定
-            "cfg_scale": 11,
-            "sampler_name": "Euler a",  # 整合包预置，秋葉默认推荐
-            "restore_faces": False,
-            "enable_hr": False,
-        }
-
+    def _post_sd(self, endpoint, payload):
+        """统一的 SD WebUI POST 助手。"""
+        url = self.api_url.replace("/txt2img", endpoint)
         headers = {"Content-Type": "application/json"}
         if self.api_key:
             headers["Authorization"] = f"Bearer {self.api_key}"
 
         try:
             # 本地 GPU 推理 4 张约 10~30s，给足超时
-            response = requests.post(self.api_url, json=payload, headers=headers, timeout=180)
+            response = requests.post(url, json=payload, headers=headers, timeout=180)
             response.raise_for_status()
         except requests.exceptions.Timeout:
             raise Exception("SD WebUI 生成超时（>180s）。请检查 GPU 是否在跑、模型是否过大")
@@ -153,9 +83,43 @@ class GlassImageGenerator:
             raise Exception(f"SD WebUI 报错: {result['error']}")
         raise Exception("SD WebUI 返回为空")
 
-    def generate_mock(self, prompt, num_images=4):
-        """模拟生成图片（当API不可用时使用占位图片）"""
-        mock_images = []
-        for _ in range(num_images):
-            mock_images.append(f"https://picsum.photos/seed/{random.randint(1, 100000)}/512/512")
-        return mock_images
+    def _generate_sd(self, prompt, num_images=4):
+        """Stable Diffusion WebUI txt2img。"""
+        full_prompt = self.positive_template.format(prompt=prompt)
+        payload = {
+            "prompt": full_prompt,
+            "negative_prompt": self.negative_prompt,
+            "batch_size": num_images,
+            "width": 512,
+            "height": 512,
+            "seed": -1,                 # -1 = 随机
+            "steps": 25,                # SD1.5 出图 20~30 比较稳定
+            "cfg_scale": 11,
+            "sampler_name": "Euler a",  # 整合包预置，秋葉默认推荐
+            "restore_faces": False,
+            "enable_hr": False,
+        }
+        return self._post_sd("/txt2img", payload)
+
+    def _generate_img2img(self, init_image_b64, prompt, denoising_strength=0.55, num_images=4):
+        """Stable Diffusion WebUI img2img。
+
+        init_image_b64: base64 编码的起始图（不带 data:image/png;base64, 前缀）
+        denoising_strength: 0.0~1.0，越高越偏离原图
+        """
+        full_prompt = self.positive_template.format(prompt=prompt)
+        payload = {
+            "init_images": [init_image_b64],
+            "prompt": full_prompt,
+            "negative_prompt": self.negative_prompt,
+            "denoising_strength": max(0.0, min(1.0, denoising_strength)),
+            "batch_size": num_images,
+            "width": 512,
+            "height": 512,
+            "seed": -1,
+            "steps": 25,
+            "cfg_scale": 11,
+            "sampler_name": "Euler a",
+            "restore_faces": False,
+        }
+        return self._post_sd("/img2img", payload)

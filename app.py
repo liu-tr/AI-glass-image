@@ -2,6 +2,7 @@ from flask import Flask, request, jsonify, render_template
 from flask_cors import CORS
 import os
 import sys
+import base64
 
 # 添加src目录到路径
 sys.path.append(os.path.join(os.path.dirname(__file__), 'src'))
@@ -23,22 +24,18 @@ CORS(app)
 # 初始化服务
 db = JSONDatabase()
 
-# 文生图服务配置
-#   - "pollinations"：在线服务，免注册免 key（默认网络模式）
-#   - "sd_webui"    ：本地 SD WebUI 整合包（B 站秋葉整合包），需先启动 webui-user.bat
-# 切换时只需改下面的 provider 与 api_url 即可。
+# 文生图 / 图生图服务：仅接入本地 SD WebUI（A1111，需启动时带 --api）
+#   - txt2img: http://127.0.0.1:7860/sdapi/v1/txt2img
+#   - img2img: http://127.0.0.1:7860/sdapi/v1/img2img
 SD_WEBUI_TXT2IMG = "http://127.0.0.1:7860/sdapi/v1/txt2img"
-generator = GlassImageGenerator(
-    provider="sd_webui",
-    api_url=SD_WEBUI_TXT2IMG,
-)
+generator = GlassImageGenerator(api_url=SD_WEBUI_TXT2IMG)
 try:
     generator.test_connection()
     USE_REAL_API = True
     print(f"✓ 已连接 SD WebUI: {SD_WEBUI_TXT2IMG}")
 except Exception as e:
     USE_REAL_API = False
-    print(f"⚠ SD WebUI 不可用，使用模拟模式: {e}")
+    print(f"⚠ SD WebUI 不可用: {e}")
     print("  请确认：①已启动 webui-user.bat ②看到 'Running on local URL: http://127.0.0.1:7860' "
           "③整合包内 models/Stable-diffusion/ 已放入 safetensors 模型")
 
@@ -63,9 +60,48 @@ def generate_images():
         elif USE_REAL_API:
             images = generator.generate(prompt, num_images=4)
         else:
-            # 模拟生成图片（返回示例图片）
-            images = generator.generate_mock(prompt, num_images=4)
+            return jsonify({"error": "SD WebUI 未连接，无法生成图片"}), 503
 
+        design = db.add_design(prompt, images)
+        return jsonify({"success": True, "design": design})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route('/api/img2img', methods=['POST'])
+def img2img_images():
+    """图生图：multipart/form-data 接收 prompt + 强度 + 起始图。"""
+    try:
+        prompt = request.form.get('prompt', '').strip()
+        if not prompt:
+            return jsonify({"error": "请输入设计需求"}), 400
+
+        if not USE_REAL_API:
+            return jsonify({"error": "SD WebUI 未连接，无法生成图片"}), 503
+
+        # 输入合规检查
+        blocked_term = find_blocked_term(prompt)
+        if blocked_term:
+            reason = f"输入含工业敏感词「{blocked_term}」"
+            images = [build_rejection_image(reason, blocked_term) for _ in range(4)]
+            design = db.add_design(prompt, images)
+            return jsonify({"success": True, "design": design})
+
+        # 强度
+        try:
+            strength = float(request.form.get('denoising_strength', 0.55))
+        except (TypeError, ValueError):
+            strength = 0.55
+
+        # 起始图
+        if 'init_image' not in request.files:
+            return jsonify({"error": "缺少起始图，请上传或选择一张"}), 400
+        file = request.files['init_image']
+        if not file or not file.filename:
+            return jsonify({"error": "起始图无效"}), 400
+        init_b64 = base64.b64encode(file.read()).decode('ascii')
+
+        images = generator.generate_img2img(init_b64, prompt, denoising_strength=strength)
         design = db.add_design(prompt, images)
         return jsonify({"success": True, "design": design})
     except Exception as e:

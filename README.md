@@ -27,7 +27,7 @@ python app.py
 
 | 模块 | 说明 |
 |------|------|
-| **文生图** | 接入免费的 Pollinations.AI（免注册免 key），服务端并发抓图转 base64 data URI，避开浏览器 ORB 拦截 |
+| **文生图 / 图生图** | 接入本地 Stable Diffusion WebUI（A1111，需启动时带 --api），txt2img + img2img 双端点 |
 | **输入合规** | `input_guard` 模块在调文生图前预检用户 prompt，命中工业负面词直接返回 SVG 拒绝图，不污染数据 |
 | **多目标优化** | MOPSO 自实现：4 目标（壁厚均匀度 / 成品废品率 / 加工能耗 / 耐热安全）、6 维工艺参数、100 代 50 粒子 |
 | **可视化** | 4 个图表：方案对比 / 工艺参数表 / 收敛曲线 / 帕累托散点（ECharts 5.4.3） |
@@ -55,7 +55,7 @@ python app.py
 │   ├── __init__.py
 │   └── services/
 │       ├── __init__.py
-│       ├── image_generator.py      # 文生图（SD WebUI / Pollinations 接入）
+│       ├── image_generator.py      # 文生图 / 图生图（SD WebUI 接入）
 │       ├── input_guard.py          # 工业负面词预检 + SVG 拒绝图
 │       ├── mopso_optimizer.py      # MOPSO 多目标优化
 │       ├── objective_functions.py  # 4 项工艺目标函数
@@ -87,18 +87,18 @@ python app.py
 
 | 决策 | 原因 |
 |------|------|
-| **Pollinations 而不是本地 SD** | 课题要求「不部署/不微调生成模型」；Pollinations 免 key、响应快、零部署 |
-| **4 张图串行抓取 + view 变体** | 实测同 IP 并发上限约 1，并发 4 张会被 429；串行 + 4 个 view suffix 既稳又保证 4 张视觉不同 |
-| **input_guard 预检** | 工业负面词 100% 触发 Pollinations 内容过滤，混入 picsum 占位图会污染数据 |
+| **仅本地 SD WebUI，不接 Pollinations** | 本机已有 6GB+ 显存，SD WebUI 出图更稳可控；img2img 需要本地端点；不维护双 provider 减少出错面 |
+| **input_guard 预检** | 工业负面词 100% 触发 SD WebUI 内容过滤，混入占位图会污染数据 |
 | **SVG 拒绝图** | 内联 data URI，无新增依赖，数据库/前端/优化逻辑零修改 |
 | **等权加权和选最优解** | 帕累托前沿上用加权和选一个推荐解，方便用户落地 |
+| **图生图强度滑块 0.0~1.0 默认 0.55** | 0.3 保持原图轮廓，0.7 重画，0.55 平衡点；用户可控胜过硬编码 |
 
 ---
 
 ## 已知限制
 
 - 目标函数为经验公式仿真（**不接真实工业仿真**），符合课题「不搭建工业仿真环境」要求
-- Pollinations 免费档对单 IP 4 张图理论下限 **8~45s**（上游限流客观限制）
+- SD1.5 512×512 batch=4 单次推理 12~30s（GPU 决定上限，SDXL 会更慢）
 - 帕累托图仅 2 维（X=壁厚均匀度、Y=加工能耗），4 维信息见收敛曲线 + 对比表
 - 数据库为单 JSON 文件，**不支持并发写**
 
