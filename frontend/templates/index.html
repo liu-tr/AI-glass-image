@@ -62,10 +62,23 @@
         .image-item {
             aspect-ratio: 1; border-radius: 8px; overflow: hidden; cursor: pointer;
             border: 2px solid transparent; transition: border-color 0.2s;
+            position: relative;          /* 让 .download-btn 可以绝对定位 */
         }
         .image-item:hover { border-color: #c0c9ff; }
         .image-item.selected { border-color: #4c6ef5; }
         .image-item img { width: 100%; height: 100%; object-fit: cover; display: block; }
+        /* 下载按钮：悬浮时显形，绝对定位右上角 */
+        .download-btn {
+            position: absolute; top: 6px; right: 6px;
+            width: 28px; height: 28px; border-radius: 50%;
+            background: rgba(0, 0, 0, 0.55); color: #fff;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 14px; line-height: 1;
+            opacity: 0; transition: opacity 0.2s, background 0.2s;
+            cursor: pointer; z-index: 2; user-select: none;
+        }
+        .image-item:hover .download-btn { opacity: 1; }
+        .download-btn:hover { background: rgba(76, 110, 245, 0.95); }
         .loading { text-align: center; padding: 36px; color: #8a919e; }
         .spinner {
             border: 3px solid #eaecef; border-top: 3px solid #4c6ef5; border-radius: 50%;
@@ -349,21 +362,46 @@
             images.forEach((imgUrl, index) => {
                 const div = document.createElement('div');
                 div.className = 'image-item';
-                div.innerHTML = `<img src="${imgUrl}" alt="设计图${index+1}">`;
-                div.addEventListener('click', () => selectImage(index));
+                // 用 download 属性，让浏览器原生下载；data URI 浏览器原生支持
+                div.innerHTML = `<img src="${imgUrl}" alt="设计图${index+1}">
+                    <span class="download-btn" title="下载该图">⬇</span>`;
+                div.addEventListener('click', (e) => {
+                    // 点下载按钮时不触发选中
+                    if (e.target.classList.contains('download-btn')) {
+                        e.stopPropagation();
+                        downloadImage(imgUrl, index);
+                        return;
+                    }
+                    selectImage(index);
+                });
                 grid.appendChild(div);
             });
             document.getElementById('imageArea').style.display = 'block';
             document.getElementById('optimizeBtn').style.display = 'none';
             selectedImageIndex = -1;
-            // 缓存供图生图复用（过滤掉拒绝图：拒绝图是 SVG data URI，但这里统一缓存也无害，
-            // 后续如果用户点"复用上次"看到的是拒绝图也不影响 img2img 行为——SD WebUI 会正常处理）
+            // 缓存供图生图复用
             lastGeneratedImages = images.slice();
             // 刷新上次图预览
             const preview = document.getElementById('lastImagePreview');
             if (lastGeneratedImages.length) {
                 preview.src = lastGeneratedImages[0];
             }
+        }
+
+        // 下载指定图片到本地
+        function downloadImage(dataUri, index) {
+            // 从 prompt 生成文件名前缀；带时间戳避免重名
+            const prompt = currentDesign?.prompt || 'glass-cup';
+            const safe = prompt.replace(/[^\u4e00-\u9fa5a-zA-Z0-9]/g, '_').slice(0, 24);
+            const ts = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+            const filename = `glasscup_${safe}_${ts}_${index + 1}.png`;
+
+            const a = document.createElement('a');
+            a.href = dataUri;
+            a.download = filename;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
         }
 
         function selectImage(index) {
