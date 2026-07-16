@@ -29,15 +29,21 @@ db = JSONDatabase()
 #   - img2img: http://127.0.0.1:7860/sdapi/v1/img2img
 SD_WEBUI_TXT2IMG = "http://127.0.0.1:7860/sdapi/v1/txt2img"
 generator = GlassImageGenerator(api_url=SD_WEBUI_TXT2IMG)
-try:
-    generator.test_connection()
-    USE_REAL_API = True
+
+# 连接检查改为每次都探活（支持在 Flask 运行后启动 SD WebUI）
+def is_sd_available():
+    """动态检查 SD WebUI 是否在线，不再依赖启动时的一次性检测。"""
+    try:
+        generator.test_connection()
+        return True
+    except Exception:
+        return False
+
+# 启动时只打印状态，不再设置全局标志
+if is_sd_available():
     print(f"✓ 已连接 SD WebUI: {SD_WEBUI_TXT2IMG}")
-except Exception as e:
-    USE_REAL_API = False
-    print(f"⚠ SD WebUI 不可用: {e}")
-    print("  请确认：①已启动 webui-user.bat ②看到 'Running on local URL: http://127.0.0.1:7860' "
-          "③整合包内 models/Stable-diffusion/ 已放入 safetensors 模型")
+else:
+    print("[INFO] SD WebUI 未连接。启动后会自动检测，无需重启 Flask")
 
 
 @app.route('/')
@@ -58,7 +64,7 @@ def generate_images():
         if blocked_term:
             reason = f"输入含工业敏感词「{blocked_term}」"
             images = [build_rejection_image(reason, blocked_term) for _ in range(4)]
-        elif USE_REAL_API:
+        elif is_sd_available():
             images = generator.generate(prompt, num_images=4, lora_weight=lora_weight)
         else:
             return jsonify({"error": "SD WebUI 未连接，无法生成图片"}), 503
@@ -79,7 +85,7 @@ def img2img_images():
 
         lora_weight = request.form.get('lora_weight', 0, type=float)
 
-        if not USE_REAL_API:
+        if not is_sd_available():
             return jsonify({"error": "SD WebUI 未连接，无法生成图片"}), 503
 
         # 输入合规检查
