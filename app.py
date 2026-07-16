@@ -49,6 +49,7 @@ def index():
 def generate_images():
     try:
         prompt = request.json.get('prompt', '')
+        lora_weight = request.json.get('lora_weight', 0)
         if not prompt:
             return jsonify({"error": "请输入设计需求"}), 400
 
@@ -58,7 +59,7 @@ def generate_images():
             reason = f"输入含工业敏感词「{blocked_term}」"
             images = [build_rejection_image(reason, blocked_term) for _ in range(4)]
         elif USE_REAL_API:
-            images = generator.generate(prompt, num_images=4)
+            images = generator.generate(prompt, num_images=4, lora_weight=lora_weight)
         else:
             return jsonify({"error": "SD WebUI 未连接，无法生成图片"}), 503
 
@@ -75,6 +76,8 @@ def img2img_images():
         prompt = request.form.get('prompt', '').strip()
         if not prompt:
             return jsonify({"error": "请输入设计需求"}), 400
+
+        lora_weight = request.form.get('lora_weight', 0, type=float)
 
         if not USE_REAL_API:
             return jsonify({"error": "SD WebUI 未连接，无法生成图片"}), 503
@@ -101,7 +104,7 @@ def img2img_images():
             return jsonify({"error": "起始图无效"}), 400
         init_b64 = base64.b64encode(file.read()).decode('ascii')
 
-        images = generator.generate_img2img(init_b64, prompt, denoising_strength=strength)
+        images = generator.generate_img2img(init_b64, prompt, denoising_strength=strength, lora_weight=lora_weight)
         design = db.add_design(prompt, images)
         return jsonify({"success": True, "design": design})
     except Exception as e:

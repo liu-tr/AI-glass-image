@@ -150,6 +150,20 @@
         .slider-row label { font-size: 13px; color: #4e5969; display: flex; justify-content: space-between; }
         .slider-row label span { color: #4c6ef5; font-weight: 600; }
         .slider-row input[type=range] { width: 100%; cursor: pointer; }
+
+        /* LoRA 控制区 */
+        .lora-section {
+            margin: 14px 0; padding: 12px 14px;
+            background: #f6f8fe; border-radius: 8px; border: 1px solid #e8ecf5;
+        }
+        .lora-header { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+        .lora-header label { font-size: 13px; color: #4e5969; cursor: pointer; display: flex; align-items: center; gap: 4px; }
+        .lora-header input[type=checkbox] { cursor: pointer; }
+        .lora-weight-row { display: flex; align-items: center; gap: 12px; }
+        .lora-weight-row label { font-size: 13px; color: #4e5969; white-space: nowrap; }
+        .lora-weight-row input[type=range] { flex: 1; cursor: pointer; }
+        .lora-weight-row .lora-val { font-size: 14px; font-weight: 600; color: #4c6ef5; min-width: 36px; text-align: right; }
+        .lora-hint { font-size: 11px; color: #a9afba; margin-top: 6px; }
     </style>
 </head>
 <body>
@@ -170,6 +184,21 @@
                 <div class="input-group">
                     <label for="prompt">输入设计需求（中文）：</label>
                     <textarea id="prompt" placeholder="例如：简约风格，圆柱形，透明玻璃，适合咖啡饮用..."></textarea>
+                </div>
+                <!-- LoRA 控制区 -->
+                <div class="lora-section">
+                    <div class="lora-header">
+                        <label><input type="checkbox" id="loraToggle"> 使用 LoRA 微调模型</label>
+                        <span style="font-size:11px;color:#a9afba;">（需先安装 glasscup_lora.safetensors）</span>
+                    </div>
+                    <div class="lora-weight-row" id="loraWeightRow" style="opacity:0.4;pointer-events:none;">
+                        <label>LoRA 权重：</label>
+                        <input type="range" id="loraWeight" min="0.0" max="1.5" step="0.05" value="0.8">
+                        <span class="lora-val" id="loraWeightDisplay">0.80</span>
+                    </div>
+                    <div class="lora-hint">
+                        触发词 <code>glasscup</code> 和 <code>&lt;lora:glasscup_lora:{权重}&gt;</code> 将自动拼入 prompt
+                    </div>
                 </div>
                 <div id="img2imgOptions" class="img2img-options" style="display: none;">
                     <div class="init-source-row">
@@ -287,6 +316,22 @@
             paretoChart = echarts.init(document.getElementById('paretoChart'));
         }
 
+        // LoRA 开关联动禁用状态
+        document.getElementById('loraToggle').addEventListener('change', function() {
+            const row = document.getElementById('loraWeightRow');
+            if (this.checked) {
+                row.style.opacity = '1';
+                row.style.pointerEvents = 'auto';
+            } else {
+                row.style.opacity = '0.4';
+                row.style.pointerEvents = 'none';
+            }
+        });
+        // LoRA 滑块实时显示
+        document.getElementById('loraWeight').addEventListener('input', function() {
+            document.getElementById('loraWeightDisplay').textContent = this.value;
+        });
+
         document.getElementById('generateBtn').addEventListener('click', async () => {
             const prompt = document.getElementById('prompt').value.trim();
             if (!prompt) { alert('请输入设计需求'); return; }
@@ -328,15 +373,20 @@
                     fd.append('prompt', prompt);
                     fd.append('denoising_strength', strength);
                     fd.append('init_image', initBlob, 'init.png');
+                    const loraEnabled = document.getElementById('loraToggle').checked;
+                    const loraWeight = loraEnabled ? parseFloat(document.getElementById('loraWeight').value) : 0;
+                    fd.append('lora_weight', loraWeight);
 
                     response = await fetch('/api/img2img', { method: 'POST', body: fd });
                     data = await response.json();
                 } else {
                     // 文生图：JSON
+                    const loraEnabled = document.getElementById('loraToggle').checked;
+                    const loraWeight = loraEnabled ? parseFloat(document.getElementById('loraWeight').value) : 0;
                     response = await fetch('/api/generate', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ prompt })
+                        body: JSON.stringify({ prompt, lora_weight: loraWeight })
                     });
                     data = await response.json();
                 }

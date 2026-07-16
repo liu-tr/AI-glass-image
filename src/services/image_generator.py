@@ -44,17 +44,17 @@ class GlassImageGenerator:
         if response.status_code != 200:
             raise Exception(f"SD WebUI 探活失败，HTTP {response.status_code}")
 
-    def generate(self, prompt, num_images=4):
+    def generate(self, prompt, num_images=4, lora_weight=0):
         """文生图（txt2img）。返回base64 data URI列表。"""
-        return self._generate_sd(prompt, num_images)
+        return self._generate_sd(prompt, num_images, lora_weight=lora_weight)
 
-    def generate_img2img(self, init_image_b64, prompt, denoising_strength=0.55, num_images=4):
+    def generate_img2img(self, init_image_b64, prompt, denoising_strength=0.55, num_images=4, lora_weight=0):
         """图生图（img2img）。
 
         init_image_b64: base64 编码的起始图（不带 data:image/png;base64, 前缀）
         denoising_strength: 0.0~1.0，越高越偏离原图
         """
-        return self._generate_img2img(init_image_b64, prompt, denoising_strength, num_images)
+        return self._generate_img2img(init_image_b64, prompt, denoising_strength, num_images, lora_weight=lora_weight)
 
     def _post_sd(self, endpoint, payload):
         """统一的 SD WebUI POST 助手。"""
@@ -83,8 +83,11 @@ class GlassImageGenerator:
             raise Exception(f"SD WebUI 报错: {result['error']}")
         raise Exception("SD WebUI 返回为空")
 
-    def _generate_sd(self, prompt, num_images=4):
+    def _generate_sd(self, prompt, num_images=4, lora_weight=0):
         """Stable Diffusion WebUI txt2img。"""
+        # 当 lora_weight > 0 时，自动拼入触发词和 LoRA 标签
+        if lora_weight > 0:
+            prompt = f"glasscup {prompt} <lora:glasscup_lora:{lora_weight:.2f}>"
         full_prompt = self.positive_template.format(prompt=prompt)
         payload = {
             "prompt": full_prompt,
@@ -101,12 +104,14 @@ class GlassImageGenerator:
         }
         return self._post_sd("/txt2img", payload)
 
-    def _generate_img2img(self, init_image_b64, prompt, denoising_strength=0.55, num_images=4):
+    def _generate_img2img(self, init_image_b64, prompt, denoising_strength=0.55, num_images=4, lora_weight=0):
         """Stable Diffusion WebUI img2img。
 
         init_image_b64: base64 编码的起始图（不带 data:image/png;base64, 前缀）
         denoising_strength: 0.0~1.0，越高越偏离原图
         """
+        if lora_weight > 0:
+            prompt = f"glasscup {prompt} <lora:glasscup_lora:{lora_weight:.2f}>"
         full_prompt = self.positive_template.format(prompt=prompt)
         payload = {
             "init_images": [init_image_b64],
