@@ -25,13 +25,16 @@ class JSONDatabase:
         with open(self.db_path, 'w', encoding='utf-8') as f:
             json.dump(data, f, indent=2, ensure_ascii=False)
 
-    def add_design(self, prompt, images):
+    def add_design(self, prompt, images, mode="txt2img", lora_weight=0, sampler="Euler a"):
         """添加新设计方案"""
         design = {
             "id": f"design_{int(datetime.now().timestamp() * 1000)}",
             "prompt": prompt,
             "images": images,
             "selected_image": None,
+            "mode": mode,               # "txt2img" | "img2img"
+            "lora_weight": lora_weight, # 0 = 未使用 LoRA
+            "sampler": sampler,
             "created_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
             "optimization_result": None
         }

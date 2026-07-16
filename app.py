@@ -3,6 +3,9 @@ from flask_cors import CORS
 import os
 import sys
 import base64
+import csv
+import io
+from datetime import datetime
 
 # 添加src目录到路径
 sys.path.append(os.path.join(os.path.dirname(__file__), 'src'))
@@ -56,6 +59,7 @@ def generate_images():
     try:
         prompt = request.json.get('prompt', '')
         lora_weight = request.json.get('lora_weight', 0)
+        sampler_name = request.json.get('sampler_name', 'Euler a')
         if not prompt:
             return jsonify({"error": "请输入设计需求"}), 400
 
@@ -65,11 +69,11 @@ def generate_images():
             reason = f"输入含工业敏感词「{blocked_term}」"
             images = [build_rejection_image(reason, blocked_term) for _ in range(4)]
         elif is_sd_available():
-            images = generator.generate(prompt, num_images=4, lora_weight=lora_weight)
+            images = generator.generate(prompt, num_images=4, lora_weight=lora_weight, sampler_name=sampler_name)
         else:
             return jsonify({"error": "SD WebUI 未连接，无法生成图片"}), 503
 
-        design = db.add_design(prompt, images)
+        design = db.add_design(prompt, images, mode="txt2img", lora_weight=lora_weight, sampler=sampler_name)
         return jsonify({"success": True, "design": design})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
@@ -84,6 +88,7 @@ def img2img_images():
             return jsonify({"error": "请输入设计需求"}), 400
 
         lora_weight = request.form.get('lora_weight', 0, type=float)
+        sampler_name = request.form.get('sampler_name', 'Euler a')
 
         if not is_sd_available():
             return jsonify({"error": "SD WebUI 未连接，无法生成图片"}), 503
@@ -93,7 +98,7 @@ def img2img_images():
         if blocked_term:
             reason = f"输入含工业敏感词「{blocked_term}」"
             images = [build_rejection_image(reason, blocked_term) for _ in range(4)]
-            design = db.add_design(prompt, images)
+            design = db.add_design(prompt, images, mode="img2img", lora_weight=lora_weight, sampler=sampler_name)
             return jsonify({"success": True, "design": design})
 
         # 强度
@@ -110,8 +115,8 @@ def img2img_images():
             return jsonify({"error": "起始图无效"}), 400
         init_b64 = base64.b64encode(file.read()).decode('ascii')
 
-        images = generator.generate_img2img(init_b64, prompt, denoising_strength=strength, lora_weight=lora_weight)
-        design = db.add_design(prompt, images)
+        images = generator.generate_img2img(init_b64, prompt, denoising_strength=strength, lora_weight=lora_weight, sampler_name=sampler_name)
+        design = db.add_design(prompt, images, mode="img2img", lora_weight=lora_weight, sampler=sampler_name)
         return jsonify({"success": True, "design": design})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
@@ -208,6 +213,46 @@ def delete_design(design_id):
     try:
         db.delete_design(design_id)
         return jsonify({"success": True})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route('/api/designs/export/csv', methods=['GET'])
+def export_designs_csv():
+    """导出全部设计方案为 CSV 文件。"""
+    try:
+        designs = db.get_all_designs()
+        output = io.StringIO()
+        writer = csv.writer(output)
+        writer.writerow(["ID", "模式", "Prompt", "LoRA权重", "采样器",
+                          "选中图", "创建时间", "已优化", "壁厚均匀度",
+                          "废品率", "能耗", "耐热性"])
+        for d in designs:
+            opt = d.get("optimization_result") or {}
+            objs = opt.get("objectives", {}) if opt else {}
+            writer.writerow([
+                d.get("id", ""),
+                d.get("mode", "txt2img"),
+                d.get("prompt", ""),
+                d.get("lora_weight", 0),
+                d.get("sampler", "Euler a"),
+                "是" if d.get("selected_image") else "否",
+                d.get("created_at", ""),
+                "是" if opt else "否",
+                objs.get("wall_uniformity", ""),
+                objs.get("defect_rate", ""),
+                objs.get("energy_consumption", ""),
+                objs.get("heat_resistance", ""),
+            ])
+        csv_bytes = output.getvalue().encode('utf-8-sig')
+        return (
+            csv_bytes,
+            200,
+            {
+                "Content-Type": "text/csv; charset=utf-8-sig",
+                "Content-Disposition": f"attachment; filename=designs_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
+            },
+        )
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 

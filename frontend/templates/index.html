@@ -164,6 +164,60 @@
         .lora-weight-row input[type=range] { flex: 1; cursor: pointer; }
         .lora-weight-row .lora-val { font-size: 14px; font-weight: 600; color: #4c6ef5; min-width: 36px; text-align: right; }
         .lora-hint { font-size: 11px; color: #a9afba; margin-top: 6px; }
+
+        /* 采样器下拉 */
+        .sampler-row { display: flex; align-items: center; gap: 10px; margin: 10px 0; }
+        .sampler-row label { font-size: 13px; color: #4e5969; white-space: nowrap; }
+        .sampler-row select {
+            padding: 6px 10px; border: 1px solid #dcdfe6; border-radius: 6px;
+            font-size: 13px; color: #1f2329; background: #fff; cursor: pointer;
+            flex: 1; max-width: 200px;
+        }
+
+        /* 历史记录搜索框 */
+        .search-row { display: flex; gap: 8px; margin-bottom: 12px; align-items: center; }
+        .search-row input[type=text] {
+            flex: 1; padding: 8px 12px; border: 1px solid #dcdfe6; border-radius: 6px;
+            font-size: 13px; outline: none; transition: border-color 0.2s;
+        }
+        .search-row input[type=text]:focus { border-color: #4c6ef5; }
+        .search-row .btn-icon {
+            padding: 8px 14px; border: 1px solid #dcdfe6; border-radius: 6px;
+            background: #fff; color: #4e5969; font-size: 12px; cursor: pointer;
+            transition: all 0.2s; white-space: nowrap;
+        }
+        .search-row .btn-icon:hover { background: #f4f7ff; border-color: #c0c9ff; color: #4c6ef5; }
+
+        /* 历史记录标签 */
+        .design-tags { display: flex; gap: 4px; flex-wrap: wrap; margin-bottom: 4px; }
+        .design-tags .mode-tag {
+            display: inline-block; padding: 1px 8px; border-radius: 10px;
+            font-size: 11px; font-weight: 500; line-height: 1.6;
+        }
+        .mode-tag.txt2img { background: #eaf3ff; color: #4c6ef5; }
+        .mode-tag.img2img { background: #fff0e6; color: #e8850c; }
+        .mode-tag.lora-on { background: #e6ffee; color: #2b8a3e; }
+        .mode-tag.lora-off { display: none; }
+
+        /* 历史预览区（区别于当前生成区） */
+        .history-preview {
+            margin-top: 16px; padding: 16px; border-radius: 8px;
+            background: #fafbff; border: 1px dashed #c0c9ff;
+        }
+        .history-preview .preview-header {
+            font-size: 13px; font-weight: 600; color: #4c6ef5; margin-bottom: 12px;
+            display: flex; align-items: center; gap: 8px;
+        }
+        .history-preview .preview-header .close-preview {
+            margin-left: auto; cursor: pointer; color: #8a919e; font-size: 16px;
+            line-height: 1; padding: 0 4px;
+        }
+        .history-preview .preview-header .close-preview:hover { color: #e5484d; }
+        .history-preview .image-grid {
+            grid-template-columns: repeat(2, 1fr); gap: 8px;
+        }
+        .history-preview .image-item { aspect-ratio: 1; cursor: default; }
+        .history-preview .image-item .download-btn { display: none; }
     </style>
 </head>
 <body>
@@ -200,6 +254,20 @@
                         触发词 <code>glasscup</code> 和 <code>&lt;lora:glasscup_lora:{权重}&gt;</code> 将自动拼入 prompt
                     </div>
                 </div>
+                <!-- 采样器选择 -->
+                <div class="sampler-row">
+                    <label>采样器：</label>
+                    <select id="samplerSelect">
+                        <option value="Euler a">Euler a（默认/快速）</option>
+                        <option value="Euler">Euler</option>
+                        <option value="DPM++ 2M Karras">DPM++ 2M Karras（稳定）</option>
+                        <option value="DPM++ 2M SDE Karras">DPM++ 2M SDE Karras（精细）</option>
+                        <option value="UniPC">UniPC（快速）</option>
+                        <option value="DDIM">DDIM</option>
+                        <option value="LMS">LMS</option>
+                    </select>
+                </div>
+
                 <div id="img2imgOptions" class="img2img-options" style="display: none;">
                     <div class="init-source-row">
                         <label><input type="radio" name="init_source" value="upload" checked> 上传本地图</label>
@@ -235,9 +303,23 @@
 
             <!-- 右侧：设计列表 -->
             <div class="card">
-                <div class="card-title">设计方案列表</div>
+                <div class="card-title" style="display:flex;justify-content:space-between;align-items:center;">
+                    <span>设计方案列表</span>
+                    <button class="btn-icon" id="exportCsvBtn" title="导出 CSV">📥 导出 CSV</button>
+                </div>
+                <div class="search-row">
+                    <input type="text" id="searchBox" placeholder="搜索 prompt...">
+                </div>
                 <div class="design-list" id="designList">
                     <div class="empty-state">暂无设计方案，开始生成第一个吧！</div>
+                </div>
+                <!-- 历史预览区（选择历史记录后显示） -->
+                <div id="historyPreviewArea" class="history-preview" style="display: none;">
+                    <div class="preview-header">
+                        📋 历史预览
+                        <span class="close-preview" id="closePreviewBtn" title="关闭预览">✕</span>
+                    </div>
+                    <div class="image-grid" id="historyImageGrid"></div>
                 </div>
             </div>
 
@@ -336,6 +418,8 @@
             const prompt = document.getElementById('prompt').value.trim();
             if (!prompt) { alert('请输入设计需求'); return; }
 
+            const samplerName = document.getElementById('samplerSelect').value;
+
             const btn = document.getElementById('generateBtn');
             btn.disabled = true;
             document.getElementById('loadingArea').style.display = 'block';
@@ -373,6 +457,7 @@
                     fd.append('prompt', prompt);
                     fd.append('denoising_strength', strength);
                     fd.append('init_image', initBlob, 'init.png');
+                    fd.append('sampler_name', samplerName);
                     const loraEnabled = document.getElementById('loraToggle').checked;
                     const loraWeight = loraEnabled ? parseFloat(document.getElementById('loraWeight').value) : 0;
                     fd.append('lora_weight', loraWeight);
@@ -386,7 +471,7 @@
                     response = await fetch('/api/generate', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ prompt, lora_weight: loraWeight })
+                        body: JSON.stringify({ prompt, lora_weight: loraWeight, sampler_name: samplerName })
                     });
                     data = await response.json();
                 }
@@ -567,11 +652,18 @@
             paretoChart.setOption(option);
         }
 
-        async function loadDesignList() {
+        async function loadDesignList(keyword) {
             try {
                 const response = await fetch('/api/designs');
                 const data = await response.json();
-                if (data.success) displayDesignList(data.designs);
+                if (data.success) {
+                    let designs = data.designs;
+                    if (keyword) {
+                        const kw = keyword.toLowerCase();
+                        designs = designs.filter(d => (d.prompt || '').toLowerCase().includes(kw));
+                    }
+                    displayDesignList(designs);
+                }
             } catch (error) {
                 console.error('加载设计列表失败:', error);
             }
@@ -585,9 +677,20 @@
             }
             list.innerHTML = '';
             designs.slice().reverse().forEach(design => {
+                const mode = design.mode || 'txt2img';
+                const loraWeight = design.lora_weight || 0;
+                const sampler = design.sampler || 'Euler a';
+                const modeLabel = mode === 'txt2img' ? '文生图' : '图生图';
+                const loraLabel = loraWeight > 0 ? `LoRA ${loraWeight.toFixed(2)}` : '';
+
                 const item = document.createElement('div');
                 item.className = 'design-item';
                 item.innerHTML = `
+                    <div class="design-tags">
+                        <span class="mode-tag ${mode}">${modeLabel}</span>
+                        ${loraLabel ? `<span class="mode-tag lora-on">${loraLabel}</span>` : ''}
+                        <span style="font-size:11px;color:#a9afba;">${sampler}</span>
+                    </div>
                     <div class="design-prompt">${design.prompt}
                         <span class="tag ${design.optimization_result ? 'optimized' : 'pending'}">
                             ${design.optimization_result ? '已优化' : '待优化'}
@@ -618,13 +721,20 @@
 
         function selectDesign(design) {
             currentDesign = design;
+            // 在历史预览区显示该设计的图片
+            const previewArea = document.getElementById('historyPreviewArea');
+            const historyGrid = document.getElementById('historyImageGrid');
+            historyGrid.innerHTML = '';
             if (design.images) {
-                displayImages(design.images);
-                if (design.selected_image) {
-                    const index = design.images.indexOf(design.selected_image);
-                    if (index !== -1) selectImage(index);
-                }
+                design.images.forEach((imgUrl, index) => {
+                    const div = document.createElement('div');
+                    div.className = 'image-item';
+                    div.innerHTML = `<img src="${imgUrl}" alt="历史图${index+1}">`;
+                    historyGrid.appendChild(div);
+                });
             }
+            previewArea.style.display = 'block';
+
             if (design.optimization_result) {
                 displayOptimizationResult(design.optimization_result);
             } else {
@@ -669,6 +779,26 @@
                         document.getElementById('lastArea').style.display = 'block';
                     }
                 });
+            });
+
+            // 历史记录搜索
+            const searchBox = document.getElementById('searchBox');
+            let searchTimer;
+            searchBox.addEventListener('input', () => {
+                clearTimeout(searchTimer);
+                searchTimer = setTimeout(() => {
+                    loadDesignList(searchBox.value.trim());
+                }, 300);
+            });
+
+            // CSV 导出
+            document.getElementById('exportCsvBtn').addEventListener('click', () => {
+                window.open('/api/designs/export/csv', '_blank');
+            });
+
+            // 关闭历史预览
+            document.getElementById('closePreviewBtn').addEventListener('click', () => {
+                document.getElementById('historyPreviewArea').style.display = 'none';
             });
         });
     </script>
