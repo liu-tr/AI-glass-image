@@ -199,25 +199,27 @@
         .mode-tag.lora-on { background: #e6ffee; color: #2b8a3e; }
         .mode-tag.lora-off { display: none; }
 
-        /* 历史预览区（区别于当前生成区） */
-        .history-preview {
-            margin-top: 16px; padding: 16px; border-radius: 8px;
-            background: #fafbff; border: 1px dashed #c0c9ff;
+        /* 设计项展开后的历史内联缩略图 */
+        .design-item.expanded { border-color: #4c6ef5; background: #f8f9ff; }
+        .inline-history {
+            display: flex; gap: 8px; margin-top: 12px; padding-top: 12px;
+            border-top: 1px solid #eaecef;
         }
-        .history-preview .preview-header {
-            font-size: 13px; font-weight: 600; color: #4c6ef5; margin-bottom: 12px;
-            display: flex; align-items: center; gap: 8px;
+        .inline-history .hist-thumb {
+            flex: 1; aspect-ratio: 1; border-radius: 6px; overflow: hidden;
+            position: relative; border: 1px solid #dcdfe6; background: #f5f6f8;
         }
-        .history-preview .preview-header .close-preview {
-            margin-left: auto; cursor: pointer; color: #8a919e; font-size: 16px;
-            line-height: 1; padding: 0 4px;
+        .inline-history .hist-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+        .inline-history .hist-thumb .download-btn {
+            position: absolute; top: 3px; right: 3px;
+            width: 22px; height: 22px; border-radius: 50%;
+            background: rgba(0,0,0,0.55); color: #fff;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 11px; line-height: 1;
+            opacity: 0; transition: opacity 0.2s; cursor: pointer; z-index: 2;
         }
-        .history-preview .preview-header .close-preview:hover { color: #e5484d; }
-        .history-preview .image-grid {
-            grid-template-columns: repeat(2, 1fr); gap: 8px;
-        }
-        .history-preview .image-item { aspect-ratio: 1; cursor: default; }
-        .history-preview .image-item .download-btn { display: none; }
+        .inline-history .hist-thumb:hover .download-btn { opacity: 1; }
+        .inline-history .hist-thumb .download-btn:hover { background: rgba(76,110,245,0.95); }
     </style>
 </head>
 <body>
@@ -312,14 +314,6 @@
                 </div>
                 <div class="design-list" id="designList">
                     <div class="empty-state">暂无设计方案，开始生成第一个吧！</div>
-                </div>
-                <!-- 历史预览区（选择历史记录后显示） -->
-                <div id="historyPreviewArea" class="history-preview" style="display: none;">
-                    <div class="preview-header">
-                        📋 历史预览
-                        <span class="close-preview" id="closePreviewBtn" title="关闭预览">✕</span>
-                    </div>
-                    <div class="image-grid" id="historyImageGrid"></div>
                 </div>
             </div>
 
@@ -675,6 +669,8 @@
                 list.innerHTML = '<div class="empty-state">暂无设计方案，开始生成第一个吧！</div>';
                 return;
             }
+            // 记住当前展开的是哪个 design id
+            const expandedId = currentDesign ? currentDesign.id : null;
             list.innerHTML = '';
             designs.slice().reverse().forEach(design => {
                 const mode = design.mode || 'txt2img';
@@ -682,9 +678,24 @@
                 const sampler = design.sampler || 'Euler a';
                 const modeLabel = mode === 'txt2img' ? '文生图' : '图生图';
                 const loraLabel = loraWeight > 0 ? `LoRA ${loraWeight.toFixed(2)}` : '';
+                const isExpanded = design.id === expandedId;
 
                 const item = document.createElement('div');
-                item.className = 'design-item';
+                item.className = 'design-item' + (isExpanded ? ' expanded' : '');
+                item.dataset.designId = design.id;
+                let inlineHtml = '';
+                if (isExpanded && design.images) {
+                    const thumbHtml = design.images.map((imgUrl, idx) => {
+                        const safe = (design.prompt || 'glass-cup').replace(/[^\u4e00-\u9fa5a-zA-Z0-9]/g, '_').slice(0, 24);
+                        const ts = design.created_at.replace(/[: ]/g, '-');
+                        const fn = `glasscup_${safe}_${ts}_${idx+1}.png`;
+                        return `<div class="hist-thumb">
+                            <img src="${imgUrl}" alt="历史图${idx+1}">
+                            <span class="download-btn" data-href="${imgUrl}" data-fn="${fn}">⬇</span>
+                        </div>`;
+                    }).join('');
+                    inlineHtml = `<div class="inline-history">${thumbHtml}</div>`;
+                }
                 item.innerHTML = `
                     <div class="design-tags">
                         <span class="mode-tag ${mode}">${modeLabel}</span>
@@ -699,7 +710,21 @@
                     <div class="design-date">创建时间：${design.created_at}</div>
                     <div class="design-actions">
                         <button class="btn-small" data-id="${design.id}">删除</button>
-                    </div>`;
+                    </div>
+                    ${inlineHtml}`;
+                // 下载按钮
+                item.querySelectorAll('.download-btn').forEach(btn => {
+                    btn.addEventListener('click', (e) => {
+                        e.stopPropagation();
+                        const a = document.createElement('a');
+                        a.href = btn.dataset.href;
+                        a.download = btn.dataset.fn;
+                        document.body.appendChild(a);
+                        a.click();
+                        document.body.removeChild(a);
+                    });
+                });
+                // 删除按钮
                 item.querySelector('.btn-small').addEventListener('click', (e) => {
                     e.stopPropagation();
                     deleteDesign(design.id);
@@ -720,20 +745,14 @@
         }
 
         function selectDesign(design) {
-            currentDesign = design;
-            // 在历史预览区显示该设计的图片
-            const previewArea = document.getElementById('historyPreviewArea');
-            const historyGrid = document.getElementById('historyImageGrid');
-            historyGrid.innerHTML = '';
-            if (design.images) {
-                design.images.forEach((imgUrl, index) => {
-                    const div = document.createElement('div');
-                    div.className = 'image-item';
-                    div.innerHTML = `<img src="${imgUrl}" alt="历史图${index+1}">`;
-                    historyGrid.appendChild(div);
-                });
+            // 如果点击的是已展开项，收起来
+            if (currentDesign && currentDesign.id === design.id) {
+                currentDesign = null;
+                loadDesignList(document.getElementById('searchBox').value.trim());
+                return;
             }
-            previewArea.style.display = 'block';
+            currentDesign = design;
+            loadDesignList(document.getElementById('searchBox').value.trim());
 
             if (design.optimization_result) {
                 displayOptimizationResult(design.optimization_result);
@@ -794,11 +813,6 @@
             // CSV 导出
             document.getElementById('exportCsvBtn').addEventListener('click', () => {
                 window.open('/api/designs/export/csv', '_blank');
-            });
-
-            // 关闭历史预览
-            document.getElementById('closePreviewBtn').addEventListener('click', () => {
-                document.getElementById('historyPreviewArea').style.display = 'none';
             });
         });
     </script>
