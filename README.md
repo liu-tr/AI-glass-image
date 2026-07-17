@@ -1,6 +1,6 @@
 # 玻璃杯AI生成可视化设计系统
 
-> 基于文生图模型（Pollinations.AI）+ MOPSO 多目标微粒群算法，
+> 基于 Stable Diffusion WebUI（文生图 / 图生图）+ MOPSO 多目标微粒群算法，
 > 实现「用户文本驱动玻璃杯设计 → 工艺参数智能寻优」一体化系统。
 >
 > 课题：**玻璃杯AI生成可视化设计系统**（第三组）
@@ -27,11 +27,13 @@ python app.py
 
 | 模块 | 说明 |
 |------|------|
-| **文生图 / 图生图** | 接入本地 Stable Diffusion WebUI（A1111，需启动时带 --api），txt2img + img2img 双端点 |
+| **文生图 / 图生图** | 接入本地 Stable Diffusion WebUI（A1111，需启动时带 --api），txt2img + img2img 双端点；采样器 7 种可选 |
+| **LoRA 微调集成** | 前端开关 + 权重滑块（0.0~1.5），自动拼接触发词和 LoRA 标签 |
 | **输入合规** | `input_guard` 模块在调文生图前预检用户 prompt，命中工业负面词直接返回 SVG 拒绝图，不污染数据 |
 | **多目标优化** | MOPSO 自实现：4 目标（壁厚均匀度 / 成品废品率 / 加工能耗 / 耐热安全）、6 维工艺参数、100 代 50 粒子 |
 | **可视化** | 4 个图表：方案对比 / 工艺参数表 / 收敛曲线 / 帕累托散点（ECharts 5.4.3） |
 | **数据持久化** | JSON 文件数据库（`data/designs.json`），读用 `utf-8-sig` 兼容 BOM、写用 `utf-8` |
+| **历史管理** | 搜索按 prompt 筛选；点击展开内联缩略图；每图可下载；一键导出 CSV |
 
 ---
 
@@ -39,7 +41,7 @@ python app.py
 
 ```
 玻璃杯AI生成可视化设计系统/
-├── app.py                          # Flask 入口（6 个 REST API + SD WebUI 探测/降级）
+├── app.py                          # Flask 入口（9 个 REST API + SD WebUI 探测/降级）
 ├── run.bat                         # Windows 一键启动（自动检测+等待 SD WebUI）
 ├── check_env.bat                   # 启动前环境自检（路径/端口/API 三步）
 ├── diag.bat                        # 运行中诊断（端口占用/进程/HTTP 健康）
@@ -57,9 +59,12 @@ python app.py
 │       ├── __init__.py
 │       ├── image_generator.py      # 文生图 / 图生图（SD WebUI 接入）
 │       ├── input_guard.py          # 工业负面词预检 + SVG 拒绝图
+│       ├── feature_extractor.py    # 生成图特征提取（Canny 边缘检测+轮廓复杂度）
 │       ├── mopso_optimizer.py      # MOPSO 多目标优化
 │       ├── objective_functions.py  # 4 项工艺目标函数
 │       └── database.py             # JSON 文件数据库
+├── 算法与模型文档/
+│   └── 数学模型与算法描述.md          # 全部算法公式与数据流说明
 └── data/
     ├── .gitkeep
     └── designs.json                # 运行时生成（已 gitignore）
@@ -74,12 +79,14 @@ python app.py
 | 方法 | 路径 | 说明 |
 |------|------|------|
 | GET | `/` | 前端主页 |
-| POST | `/api/generate` | prompt → 4 张设计图（含 input_guard 预检）|
+| POST | `/api/generate` | prompt → 4 张设计图（含 input_guard 预检 + sampler 选择）|
+| POST | `/api/img2img` | 图生图（multipart: prompt + 起始图 + 强度 + sampler）|
 | POST | `/api/optimize` | 对指定 design_id 跑 MOPSO |
 | GET | `/api/designs` | 全部设计方案 |
 | GET | `/api/designs/<id>` | 单个方案 |
 | PUT | `/api/designs/<id>` | 更新 |
 | DELETE | `/api/designs/<id>` | 删除 |
+| GET | `/api/designs/export/csv` | 导出全部方案为 CSV |
 
 ---
 

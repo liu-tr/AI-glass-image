@@ -80,11 +80,12 @@ class ParetoArchive:
 
 
 class MOPSOOptimizer:
-    def __init__(self, objective_functions, bounds, num_particles=50, max_gen=100):
+    def __init__(self, objective_functions, bounds, num_particles=50, max_gen=100, complexity=0.5):
         self.objectives = objective_functions
         self.bounds = bounds
         self.num_particles = num_particles
         self.max_gen = max_gen
+        self.complexity = complexity  # 轮廓复杂度 C（0~1），影响目标函数的行为
         self.param_names = list(bounds.keys())
         self.weights = (-1.0,) * len(objective_functions)  # 全部最小化
         self.iteration_history = []
@@ -99,6 +100,7 @@ class MOPSOOptimizer:
 
     def _evaluate(self, particle):
         params = dict(zip(self.param_names, particle))
+        params["complexity"] = self.complexity
         return tuple(func(params) for func in self.objectives)
 
     def _update_particle(self, particle, global_best, w=0.5, c1=1.5, c2=1.5):

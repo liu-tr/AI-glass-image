@@ -44,7 +44,7 @@ def is_sd_available():
 
 # 启动时只打印状态，不再设置全局标志
 if is_sd_available():
-    print(f"✓ 已连接 SD WebUI: {SD_WEBUI_TXT2IMG}")
+    print(f"[OK] 已连接 SD WebUI: {SD_WEBUI_TXT2IMG}")
 else:
     print("[INFO] SD WebUI 未连接。启动后会自动检测，无需重启 Flask")
 
@@ -122,6 +122,45 @@ def img2img_images():
         return jsonify({"error": str(e)}), 500
 
 
+def get_dynamic_bounds(complexity: float) -> dict:
+    """根据轮廓复杂度 C 动态计算工艺参数搜索区间。
+
+    原理：
+      - C≈0（简约直筒杯）：工艺窗口宽，低温/短时/低压方案可选
+      - C≈1（复杂异形杯）：工艺窗口窄，需更高温度/更长持压，冷却更慢
+
+    返回 bounds dict，格式同 MOPSOOptimizer 要求。
+    """
+    # 简单杯型基础区间（C=0）
+    simple = {
+        "heating_temp": (550, 700),
+        "heating_time": (30, 180),
+        "blowing_pressure": (0.1, 0.5),
+        "blowing_time": (5, 30),
+        "cooling_rate": (10, 50),
+        "wall_thickness_target": (2, 5),
+    }
+    # 复杂杯型收紧区间（C=1）
+    complex_bounds = {
+        "heating_temp": (580, 680),
+        "heating_time": (60, 160),
+        "blowing_pressure": (0.2, 0.45),
+        "blowing_time": (10, 25),
+        "cooling_rate": (5, 40),
+        "wall_thickness_target": (3, 5),
+    }
+
+    alpha = max(0.0, min(1.0, complexity))  # 确保 0~1
+    result = {}
+    for key in simple:
+        lo_s, hi_s = simple[key]
+        lo_c, hi_c = complex_bounds[key]
+        lo = lo_s + (lo_c - lo_s) * alpha
+        hi = hi_s + (hi_c - hi_s) * alpha
+        result[key] = (round(lo, 1), round(hi, 1))
+    return result
+
+
 @app.route('/api/optimize', methods=['POST'])
 def optimize_params():
     try:
@@ -131,7 +170,11 @@ def optimize_params():
         if not design:
             return jsonify({"error": "设计方案不存在"}), 404
 
-        # 执行MOPSO优化
+        # 读取该设计的轮廓复杂度（由 feature_extractor 在生成时提取）
+        design_complexity = design.get("complexity") or 0.5
+
+        # 执行MOPSO优化（传入复杂度，动态调整搜索区间 + 目标函数）
+        bounds = get_dynamic_bounds(design_complexity)
         optimizer = MOPSOOptimizer(
             objective_functions=[
                 calculate_wall_uniformity,
@@ -139,14 +182,8 @@ def optimize_params():
                 calculate_energy_consumption,
                 calculate_heat_resistance
             ],
-            bounds={
-                "heating_temp": (550, 700),
-                "heating_time": (30, 180),
-                "blowing_pressure": (0.1, 0.5),
-                "blowing_time": (5, 30),
-                "cooling_rate": (10, 50),
-                "wall_thickness_target": (2, 5)
-            }
+            bounds=bounds,
+            complexity=design_complexity
         )
 
         pareto_front, logbook = optimizer.optimize()
@@ -225,7 +262,7 @@ def export_designs_csv():
         output = io.StringIO()
         writer = csv.writer(output)
         writer.writerow(["ID", "模式", "Prompt", "LoRA权重", "采样器",
-                          "选中图", "创建时间", "已优化", "壁厚均匀度",
+                          "轮廓复杂度", "选中图", "创建时间", "已优化", "壁厚均匀度",
                           "废品率", "能耗", "耐热性"])
         for d in designs:
             opt = d.get("optimization_result") or {}
@@ -236,6 +273,7 @@ def export_designs_csv():
                 d.get("prompt", ""),
                 d.get("lora_weight", 0),
                 d.get("sampler", "Euler a"),
+                d.get("complexity", ""),
                 "是" if d.get("selected_image") else "否",
                 d.get("created_at", ""),
                 "是" if opt else "否",
