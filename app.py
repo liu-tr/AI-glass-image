@@ -60,6 +60,7 @@ def generate_images():
         prompt = request.json.get('prompt', '')
         lora_weight = request.json.get('lora_weight', 0)
         sampler_name = request.json.get('sampler_name', 'Euler a')
+        lora_model = request.json.get('lora_model', None)
         if not prompt:
             return jsonify({"error": "请输入设计需求"}), 400
 
@@ -69,11 +70,13 @@ def generate_images():
             reason = f"输入含工业敏感词「{blocked_term}」"
             images = [build_rejection_image(reason, blocked_term) for _ in range(4)]
         elif is_sd_available():
-            images = generator.generate(prompt, num_images=4, lora_weight=lora_weight, sampler_name=sampler_name)
+            images = generator.generate(prompt, num_images=4, lora_weight=lora_weight,
+                                        sampler_name=sampler_name, lora_model=lora_model)
         else:
             return jsonify({"error": "SD WebUI 未连接，无法生成图片"}), 503
 
-        design = db.add_design(prompt, images, mode="txt2img", lora_weight=lora_weight, sampler=sampler_name)
+        design = db.add_design(prompt, images, mode="txt2img", lora_weight=lora_weight,
+                               sampler=sampler_name, lora_model=lora_model)
         return jsonify({"success": True, "design": design})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
@@ -89,6 +92,7 @@ def img2img_images():
 
         lora_weight = request.form.get('lora_weight', 0, type=float)
         sampler_name = request.form.get('sampler_name', 'Euler a')
+        lora_model = request.form.get('lora_model', None)
 
         if not is_sd_available():
             return jsonify({"error": "SD WebUI 未连接，无法生成图片"}), 503
@@ -98,7 +102,8 @@ def img2img_images():
         if blocked_term:
             reason = f"输入含工业敏感词「{blocked_term}」"
             images = [build_rejection_image(reason, blocked_term) for _ in range(4)]
-            design = db.add_design(prompt, images, mode="img2img", lora_weight=lora_weight, sampler=sampler_name)
+            design = db.add_design(prompt, images, mode="img2img", lora_weight=lora_weight,
+                                   sampler=sampler_name, lora_model=lora_model)
             return jsonify({"success": True, "design": design})
 
         # 强度
@@ -115,8 +120,10 @@ def img2img_images():
             return jsonify({"error": "起始图无效"}), 400
         init_b64 = base64.b64encode(file.read()).decode('ascii')
 
-        images = generator.generate_img2img(init_b64, prompt, denoising_strength=strength, lora_weight=lora_weight, sampler_name=sampler_name)
-        design = db.add_design(prompt, images, mode="img2img", lora_weight=lora_weight, sampler=sampler_name)
+        images = generator.generate_img2img(init_b64, prompt, denoising_strength=strength,
+                                            lora_weight=lora_weight, sampler_name=sampler_name, lora_model=lora_model)
+        design = db.add_design(prompt, images, mode="img2img", lora_weight=lora_weight,
+                               sampler=sampler_name, lora_model=lora_model)
         return jsonify({"success": True, "design": design})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
@@ -165,6 +172,8 @@ def get_dynamic_bounds(complexity: float) -> dict:
 def optimize_params():
     try:
         design_id = request.json.get('design_id')
+        # 新增：支持指定要优化的图片索引（0-based），默认为 0
+        image_index = request.json.get('image_index', 0)
         design = db.get_design(design_id)
 
         if not design:
@@ -194,21 +203,28 @@ def optimize_params():
         # 获取迭代历史用于可视化
         iteration_history = optimizer.get_iteration_history(logbook)
 
-        # 更新数据库
-        db.update_design(design_id, {
-            "optimization_result": {
-                "params": {k: round(float(v), 2)
-                           for k, v in zip(list(optimizer.bounds.keys()), best_solution)},
-                "objectives": {
-                    "wall_uniformity": round(best_solution.fitness.values[0] * 100, 2),
-                    "defect_rate": round(best_solution.fitness.values[1] * 100, 2),
-                    "energy_consumption": round(best_solution.fitness.values[2], 2),
-                    "heat_resistance": round((1 - best_solution.fitness.values[3]) * 100, 2)
-                },
-                "pareto_front": optimizer.pareto_to_dict(pareto_front),
-                "iteration_history": iteration_history
-            }
-        })
+        # 获取对应图片作为 selected_image
+        images = design.get("images") or []
+        selected_image = images[image_index] if 0 <= image_index < len(images) else None
+
+        # 构造按图片索引存储的优化结果
+        opt_result = {
+            "image_index": image_index,
+            "selected_image": selected_image,
+            "params": {k: round(float(v), 2)
+                       for k, v in zip(list(optimizer.bounds.keys()), best_solution)},
+            "objectives": {
+                "wall_uniformity": round(best_solution.fitness.values[0] * 100, 2),
+                "defect_rate": round(best_solution.fitness.values[1] * 100, 2),
+                "energy_consumption": round(best_solution.fitness.values[2], 2),
+                "heat_resistance": round((1 - best_solution.fitness.values[3]) * 100, 2)
+            },
+            "pareto_front": optimizer.pareto_to_dict(pareto_front),
+            "iteration_history": iteration_history
+        }
+
+        # 按图片索引存储（不覆盖其他图片的优化结果）
+        db.store_optimization(design_id, image_index, opt_result)
 
         return jsonify({"success": True, "design": db.get_design(design_id)})
     except Exception as e:
@@ -250,6 +266,29 @@ def delete_design(design_id):
     try:
         db.delete_design(design_id)
         return jsonify({"success": True})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route('/api/loras', methods=['GET'])
+def list_loras():
+    """获取 SD WebUI 当前可用的全部 LoRA 模型列表（动态）。"""
+    try:
+        if not is_sd_available():
+            return jsonify({"success": True, "loras": [], "note": "SD WebUI 未连接"})
+        loras = generator.list_loras()
+        return jsonify({"success": True, "loras": loras})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route('/api/loras/refresh', methods=['POST'])
+def refresh_loras():
+    """让 SD WebUI 重新扫描 LoRA 目录。"""
+    try:
+        generator.refresh_loras()
+        loras = generator.list_loras()
+        return jsonify({"success": True, "loras": loras})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 

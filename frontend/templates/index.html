@@ -256,6 +256,44 @@
         }
         .btn-optimize-history:hover { background: #3b5bdb; }
         .btn-optimize-history:disabled { opacity: 0.5; cursor: not-allowed; }
+
+        /* ---- 缩略图选中状态 ---- */
+        .hist-thumb { cursor: pointer; }
+        .hist-thumb.selected {
+            border-color: #3361ff;
+            border-width: 3px;
+            box-shadow: 0 0 0 3px rgba(51, 97, 255, 0.18);
+        }
+
+        /* ---- 缩略图优化状态标识（右下角） ---- */
+        .opt-status-icon {
+            position: absolute; bottom: 3px; right: 3px;
+            width: 20px; height: 20px; border-radius: 50%;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 12px; font-weight: bold; line-height: 1;
+            z-index: 3; pointer-events: none;
+        }
+        .opt-status-icon.done { background: #2b8a3e; color: #fff; }
+        .opt-status-icon.pending { background: #adb5bd; color: #fff; }
+
+        /* ---- 导航箭头 ---- */
+        .nav-arrows {
+            display: flex; align-items: center; justify-content: center; gap: 16px;
+            margin: 12px 0;
+        }
+        .nav-arrow {
+            width: 36px; height: 36px; border-radius: 50%;
+            border: 1px solid #dcdfe6; background: #fff;
+            color: #4e5969; font-size: 18px; cursor: pointer;
+            display: flex; align-items: center; justify-content: center;
+            transition: all 0.2s; user-select: none;
+        }
+        .nav-arrow:hover:not(:disabled) { background: #f4f7ff; border-color: #4c6ef5; color: #4c6ef5; }
+        .nav-arrow:disabled { opacity: 0.3; cursor: not-allowed; }
+        .nav-position { font-size: 13px; color: #6b7280; min-width: 80px; text-align: center; }
+
+        /* ---- 部分优化标签 ---- */
+        .tag.partial-optimized { background: #fff0e6; color: #e8850c; }
     </style>
 </head>
 <body>
@@ -281,15 +319,19 @@
                 <div class="lora-section">
                     <div class="lora-header">
                         <label><input type="checkbox" id="loraToggle"> 使用 LoRA 微调模型</label>
-                        <span style="font-size:11px;color:#a9afba;">（需先安装 glasscup_lora.safetensors）</span>
                     </div>
                     <div class="lora-weight-row" id="loraWeightRow" style="opacity:0.4;pointer-events:none;">
-                        <label>LoRA 权重：</label>
+                        <label>模型：</label>
+                        <select id="loraModelSelect" style="padding:4px 8px;border:1px solid #dcdfe6;border-radius:4px;font-size:13px;flex:1;">
+                            <option value="">加载中…</option>
+                        </select>
+                        <button id="refreshLoraBtn" class="btn-icon" style="padding:4px 10px;font-size:12px;border:1px solid #dcdfe6;border-radius:4px;background:#fff;color:#4e5969;cursor:pointer;" title="刷新 LoRA 列表">🔄</button>
+                        <label>权重：</label>
                         <input type="range" id="loraWeight" min="0.0" max="1.5" step="0.05" value="0.8">
                         <span class="lora-val" id="loraWeightDisplay">0.80</span>
                     </div>
                     <div class="lora-hint">
-                        触发词 <code>glasscup</code> 和 <code>&lt;lora:glasscup_lora:{权重}&gt;</code> 将自动拼入 prompt
+                        触发词 <code>glasscup</code> + <code>&lt;lora:{模型名}:{权重}&gt;</code> 自动拼入 prompt
                     </div>
                 </div>
                 <!-- 采样器选择 -->
@@ -368,6 +410,13 @@
                     </div>
                 </div>
 
+                <!-- 顶部导航箭头 -->
+                <div class="nav-arrows" id="optNavArrowsTop" style="display:none;">
+                    <button class="nav-arrow" id="optPrevBtnTop">◀</button>
+                    <span class="nav-position" id="optNavPositionTop">1 / 4</span>
+                    <button class="nav-arrow" id="optNextBtnTop">▶</button>
+                </div>
+
                 <div class="comparison-grid">
                     <div class="comparison-box aesthetic">
                         <div class="comparison-title">纯美学生成（参考基准）</div>
@@ -406,18 +455,27 @@
                     <div class="result-title">帕累托前沿分布：</div>
                     <div class="chart-container" id="paretoChart"></div>
                 </div>
+
+                <!-- 底部导航箭头 -->
+                <div class="nav-arrows" id="optNavArrowsBottom" style="display:none;">
+                    <button class="nav-arrow" id="optPrevBtnBottom">◀</button>
+                    <span class="nav-position" id="optNavPositionBottom">1 / 4</span>
+                    <button class="nav-arrow" id="optNextBtnBottom">▶</button>
+                </div>
             </div>
         </div>
     </div>
 
     <script>
         let currentDesign = null;
-        let selectedImageIndex = -1;
+        let selectedImageIndex = -1;          // 左侧图网格选中图片索引
+        let selectedThumbnailIndex = -1;      // 右侧缩略图选中图片索引
+        let currentOptImageIndex = 0;         // 优化结果当前显示的图片索引
         let convergenceChart = null;
         let paretoChart = null;
-        let lastGeneratedImages = [];   // 缓存最近一次生成的 4 张图（供图生图复用）
-        let currentMode = 'txt2img';    // 'txt2img' | 'img2img'
-        let designsCache = [];          // 缓存全部设计方案，避免重复请求
+        let lastGeneratedImages = [];         // 缓存最近一次生成的 4 张图（供图生图复用）
+        let currentMode = 'txt2img';          // 'txt2img' | 'img2img'
+        let designsCache = [];                // 缓存全部设计方案，避免重复请求
 
         const paramRanges = {
             "heating_temp": "550-700°C",
@@ -444,17 +502,54 @@
         // LoRA 开关联动禁用状态
         document.getElementById('loraToggle').addEventListener('change', function() {
             const row = document.getElementById('loraWeightRow');
+            const modelSelect = document.getElementById('loraModelSelect');
             if (this.checked) {
                 row.style.opacity = '1';
                 row.style.pointerEvents = 'auto';
+                modelSelect.disabled = false;
             } else {
                 row.style.opacity = '0.4';
                 row.style.pointerEvents = 'none';
+                modelSelect.disabled = true;
             }
         });
         // LoRA 滑块实时显示
         document.getElementById('loraWeight').addEventListener('input', function() {
             document.getElementById('loraWeightDisplay').textContent = this.value;
+        });
+
+        // ─── 动态加载 LoRA 模型列表 ─────────────────────────────
+        async function populateLoraDropdown() {
+            const select = document.getElementById('loraModelSelect');
+            try {
+                const resp = await fetch('/api/loras');
+                const data = await resp.json();
+                if (data.success && data.loras && data.loras.length > 0) {
+                    // 用 SD WebUI 返回的 name 字段填充下拉
+                    select.innerHTML = data.loras.map(l =>
+                        `<option value="${l.name}">${l.name}</option>`
+                    ).join('');
+                } else {
+                    select.innerHTML = '<option value="">（无 LoRA 可用）</option>';
+                }
+            } catch {
+                select.innerHTML = '<option value="">（无法获取 LoRA 列表）</option>';
+            }
+        }
+        // 页面加载时自动获取
+        populateLoraDropdown();
+
+        // 刷新按钮 → 通知 SD WebUI 重新扫描 LoRA 目录
+        document.getElementById('refreshLoraBtn').addEventListener('click', async function() {
+            const btn = this;
+            btn.textContent = '⋯';
+            btn.disabled = true;
+            try {
+                await fetch('/api/loras/refresh', { method: 'POST' });
+                await populateLoraDropdown();
+            } catch { /* ignore */ }
+            btn.textContent = '🔄';
+            btn.disabled = false;
         });
 
         document.getElementById('generateBtn').addEventListener('click', async () => {
@@ -503,7 +598,9 @@
                     fd.append('sampler_name', samplerName);
                     const loraEnabled = document.getElementById('loraToggle').checked;
                     const loraWeight = loraEnabled ? parseFloat(document.getElementById('loraWeight').value) : 0;
+                    const loraModel = loraEnabled ? document.getElementById('loraModelSelect').value : null;
                     fd.append('lora_weight', loraWeight);
+                    fd.append('lora_model', loraModel);
 
                     response = await fetch('/api/img2img', { method: 'POST', body: fd });
                     data = await response.json();
@@ -511,10 +608,11 @@
                     // 文生图：JSON
                     const loraEnabled = document.getElementById('loraToggle').checked;
                     const loraWeight = loraEnabled ? parseFloat(document.getElementById('loraWeight').value) : 0;
+                    const loraModel = loraEnabled ? document.getElementById('loraModelSelect').value : null;
                     response = await fetch('/api/generate', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ prompt, lora_weight: loraWeight, sampler_name: samplerName })
+                        body: JSON.stringify({ prompt, lora_weight: loraWeight, sampler_name: samplerName, lora_model: loraModel })
                     });
                     data = await response.json();
                 }
@@ -598,6 +696,7 @@
             const btn = document.getElementById('optimizeBtn');
             btn.disabled = true;
             btn.textContent = '优化中...';
+            const imgIdx = selectedImageIndex >= 0 ? selectedImageIndex : 0;
             try {
                 // 先保存选中的图片信息到服务端，确保 data.design 带回 selected_image
                 if (currentDesign.selected_image) {
@@ -610,11 +709,12 @@
                 const response = await fetch('/api/optimize', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ design_id: currentDesign.id })
+                    body: JSON.stringify({ design_id: currentDesign.id, image_index: imgIdx })
                 });
                 const data = await response.json();
                 if (data.success) {
                     currentDesign = data.design;
+                    currentOptImageIndex = imgIdx;
                     displayOptimizationResult(currentDesign.optimization_result, currentDesign);
                     loadDesignList();
                 } else {
@@ -663,6 +763,9 @@
                 selSection.style.display = 'none';
             }
 
+            // 更新导航箭头
+            updateOptNavArrows(design);
+
             const card = document.getElementById('resultCard');
             card.style.display = 'block';
             card.scrollIntoView({ behavior: 'smooth' });
@@ -670,6 +773,65 @@
                 if (convergenceChart) convergenceChart.resize();
                 if (paretoChart) paretoChart.resize();
             }, 100);
+        }
+
+        /** 更新导航箭头显示状态 */
+        function updateOptNavArrows(design) {
+            if (!design || !design.images) {
+                ['Top', 'Bottom'].forEach(pos => {
+                    document.getElementById('optNavArrows' + pos).style.display = 'none';
+                });
+                return;
+            }
+            const total = design.images.length;
+            const hasResult = design.optimization_results && Object.keys(design.optimization_results).length > 0;
+            if (!hasResult || total <= 1) {
+                ['Top', 'Bottom'].forEach(pos => {
+                    document.getElementById('optNavArrows' + pos).style.display = 'none';
+                });
+                return;
+            }
+
+            const cur = currentOptImageIndex;
+            // 找到有优化结果的图片索引列表
+            const optIndices = Object.keys(design.optimization_results || {}).map(Number).sort((a, b) => a - b);
+            const posInOpt = optIndices.indexOf(cur);
+            const optTotal = optIndices.length;
+
+            ['Top', 'Bottom'].forEach(pos => {
+                const arrows = document.getElementById('optNavArrows' + pos);
+                arrows.style.display = 'flex';
+                document.getElementById('optPrevBtn' + pos).disabled = (posInOpt <= 0);
+                document.getElementById('optNextBtn' + pos).disabled = (posInOpt >= optTotal - 1);
+                document.getElementById('optNavPosition' + pos).textContent =
+                    `图片 ${cur + 1} / ${total}（已优化 ${optTotal} 张）`;
+            });
+        }
+
+        /** 导航：切换优化结果显示 */
+        function navigateOptResult(delta) {
+            if (!currentDesign) return;
+            const optResults = currentDesign.optimization_results || {};
+            const optIndices = Object.keys(optResults).map(Number).sort((a, b) => a - b);
+            if (optIndices.length === 0) return;
+
+            const curPos = optIndices.indexOf(currentOptImageIndex);
+            const newPos = Math.max(0, Math.min(optIndices.length - 1, curPos + delta));
+            if (newPos === curPos) return;
+
+            const newIdx = optIndices[newPos];
+            currentOptImageIndex = newIdx;
+
+            // 用缓存的结果显示（不再请求后端）
+            const result = optResults[String(newIdx)];
+            // 临时修改 currentDesign.optimization_result 供 displayOptimizationResult 读取
+            const savedResult = currentDesign.optimization_result;
+            currentDesign.optimization_result = result;
+            displayOptimizationResult(result, currentDesign);
+            currentDesign.optimization_result = savedResult; // 恢复（避免副作用）
+
+            // 同步选中该缩略图
+            selectThumbnail(currentDesign, newIdx);
         }
 
         function updateConvergenceChart(history) {
@@ -750,6 +912,19 @@
                 const loraLabel = loraWeight > 0 ? `LoRA ${loraWeight.toFixed(2)}` : '';
                 const isExpanded = currentDesign && currentDesign.id === design.id;
 
+                // 计算优化状态标签
+                const optResults = design.optimization_results || {};
+                const optKeys = Object.keys(optResults).filter(k => optResults[k] !== null);
+                const totalImgs = (design.images || []).length;
+                let optTag = '';
+                if (optKeys.length === 0) {
+                    optTag = '<span class="tag pending">待优化</span>';
+                } else if (optKeys.length < totalImgs) {
+                    optTag = '<span class="tag partial-optimized">部分优化</span>';
+                } else {
+                    optTag = '<span class="tag optimized">已优化</span>';
+                }
+
                 const item = document.createElement('div');
                 item.className = 'design-item' + (isExpanded ? ' expanded' : '');
                 item.dataset.designId = design.id;
@@ -760,9 +935,7 @@
                         <span style="font-size:11px;color:#a9afba;">${sampler}</span>
                     </div>
                     <div class="design-prompt">${design.prompt}
-                        <span class="tag ${design.optimization_result ? 'optimized' : 'pending'}">
-                            ${design.optimization_result ? '已优化' : '待优化'}
-                        </span>
+                        ${optTag}
                     </div>
                     <div class="design-date">创建时间：${design.created_at}</div>
                     <div class="design-actions">
@@ -789,16 +962,24 @@
             }
         }
 
-        /** 在 design-item 末尾追加内联缩略图 + 优化按钮 */
+        /** 在 design-item 末尾追加内联缩略图 + 状态标识 + 选中 + 优化按钮 */
         function appendInlineContent(item, design) {
             if (!design.images) return;
 
+            const optResults = design.optimization_results || {};
             const thumbHtml = design.images.map((imgUrl, idx) => {
                 const safe = (design.prompt || 'glass-cup').replace(/[^\u4e00-\u9fa5a-zA-Z0-9]/g, '_').slice(0, 24);
                 const ts = design.created_at.replace(/[: ]/g, '-');
                 const fn = `glasscup_${safe}_${ts}_${idx+1}.png`;
-                return `<div class="hist-thumb">
+                const isOptimized = !!optResults[String(idx)];
+                const statusIcon = isOptimized
+                    ? '<span class="opt-status-icon done">✓</span>'
+                    : '<span class="opt-status-icon pending">○</span>';
+                const selClass = (selectedThumbnailIndex === idx && currentDesign && currentDesign.id === design.id)
+                    ? ' selected' : '';
+                return `<div class="hist-thumb${selClass}" data-img-index="${idx}">
                     <img src="${imgUrl}" alt="历史图${idx+1}">
+                    ${statusIcon}
                     <span class="download-btn" data-href="${imgUrl}" data-fn="${fn}">⬇</span>
                 </div>`;
             }).join('');
@@ -808,29 +989,71 @@
             inlineDiv.innerHTML = thumbHtml;
             item.appendChild(inlineDiv);
 
-            // 下载按钮事件
-            inlineDiv.querySelectorAll('.download-btn').forEach(btn => {
-                btn.addEventListener('click', (e) => {
+            // 缩略图点击选中 + 下载按钮事件
+            inlineDiv.querySelectorAll('.hist-thumb').forEach(thumb => {
+                const idx = parseInt(thumb.dataset.imgIndex, 10);
+                // 点击缩略图 → 选中
+                thumb.addEventListener('click', (e) => {
+                    if (e.target.classList.contains('download-btn')) return;
                     e.stopPropagation();
-                    const a = document.createElement('a');
-                    a.href = btn.dataset.href;
-                    a.download = btn.dataset.fn;
-                    document.body.appendChild(a);
-                    a.click();
-                    document.body.removeChild(a);
+                    selectThumbnail(design, idx);
                 });
+                // 下载按钮
+                const downloadBtn = thumb.querySelector('.download-btn');
+                if (downloadBtn) {
+                    downloadBtn.addEventListener('click', (e) => {
+                        e.stopPropagation();
+                        const a = document.createElement('a');
+                        a.href = downloadBtn.dataset.href;
+                        a.download = downloadBtn.dataset.fn;
+                        document.body.appendChild(a);
+                        a.click();
+                        document.body.removeChild(a);
+                    });
+                }
             });
 
-            // 如果未优化，追加优化按钮
-            if (!design.optimization_result) {
+            // 追加优化按钮（如果该设计有任何未优化的图，或部分已优化）
+            const optimizedCount = Object.keys(optResults).length;
+            const totalCount = design.images.length;
+            // 有未优化的图 → 显示优化按钮
+            if (optimizedCount < totalCount) {
                 const wrapper = document.createElement('div');
                 wrapper.className = 'optimize-btn-wrapper';
                 wrapper.innerHTML = `<button class="btn-optimize-history" data-id="${design.id}">开始工艺参数优化</button>`;
                 item.appendChild(wrapper);
                 wrapper.querySelector('.btn-optimize-history').addEventListener('click', (e) => {
                     e.stopPropagation();
-                    optimizeHistoryDesign(design.id);
+                    const imgIdx = selectedThumbnailIndex >= 0 && selectedThumbnailIndex < totalCount
+                        ? selectedThumbnailIndex : 0;
+                    optimizeHistoryDesign(design.id, imgIdx);
                 });
+            }
+        }
+
+        /** 选中缩略图：更新选中样式 + 状态同步 */
+        function selectThumbnail(design, idx) {
+            if (!design || !design.images || idx < 0 || idx >= design.images.length) return;
+
+            // 取消旧选中
+            const list = document.getElementById('designList');
+            list.querySelectorAll('.hist-thumb.selected').forEach(el => el.classList.remove('selected'));
+
+            // 设置新选中
+            selectedThumbnailIndex = idx;
+            const item = list.querySelector(`.design-item[data-design-id="${design.id}"]`);
+            if (item) {
+                const thumb = item.querySelector(`.hist-thumb[data-img-index="${idx}"]`);
+                if (thumb) thumb.classList.add('selected');
+            }
+
+            // 状态同步：如果左侧图网格当前显示的是同一 design 且 index 匹配，同步选中边框
+            if (currentDesign && currentDesign.id === design.id) {
+                selectedImageIndex = idx;
+                document.querySelectorAll('.image-item').forEach((item, i) => {
+                    item.classList.toggle('selected', i === idx);
+                });
+                document.getElementById('optimizeBtn').style.display = 'block';
             }
         }
 
@@ -882,12 +1105,13 @@
                 const optBtn = item.querySelector('.optimize-btn-wrapper');
                 if (optBtn) optBtn.remove();
             }
+            selectedThumbnailIndex = -1;   // 收起时重置缩略图选中
             currentDesign = null;
             document.getElementById('resultCard').style.display = 'none';
         }
 
         /** 对历史记录的未优化设计执行工艺优化 */
-        async function optimizeHistoryDesign(designId) {
+        async function optimizeHistoryDesign(designId, imageIndex) {
             // 在缓存中找到对应设计
             const design = designsCache.find(d => d.id === designId);
             if (!design) return;
@@ -899,7 +1123,7 @@
                 const response = await fetch('/api/optimize', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ design_id: designId })
+                    body: JSON.stringify({ design_id: designId, image_index: imageIndex })
                 });
                 const data = await response.json();
                 if (data.success) {
@@ -907,7 +1131,9 @@
                     const idx = designsCache.findIndex(d => d.id === designId);
                     if (idx !== -1) designsCache[idx] = data.design;
                     currentDesign = data.design;
-                    // 重新渲染列表（让 "待优化" → "已优化" 标签生效）
+                    // 设置当前显示优化结果为刚优化的图片
+                    currentOptImageIndex = imageIndex;
+                    // 重新渲染列表（让 "待优化" → "已优化" / "部分优化" 标签生效）
                     renderDesignList(designsCache);
                     displayOptimizationResult(data.design.optimization_result, data.design);
                 } else {
@@ -994,6 +1220,12 @@
             // CSV 导出
             document.getElementById('exportCsvBtn').addEventListener('click', () => {
                 window.open('/api/designs/export/csv', '_blank');
+            });
+
+            // 导航箭头 ← →
+            ['Top', 'Bottom'].forEach(pos => {
+                document.getElementById('optPrevBtn' + pos).addEventListener('click', () => navigateOptResult(-1));
+                document.getElementById('optNextBtn' + pos).addEventListener('click', () => navigateOptResult(1));
             });
         });
     </script>
