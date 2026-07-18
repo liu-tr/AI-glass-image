@@ -64,7 +64,9 @@ python app.py
 │       ├── mopso_optimizer.py      # MOPSO 多目标优化
 │       ├── objective_functions.py  # 4 项工艺目标函数
 │       └── database.py             # JSON 文件数据库
-├── 算法与模型文档/
+├── documents/
+│   ├── README.md                    # 文档目录索引
+│   ├── 项目文档.md                   # 完整项目说明书
 │   └── 数学模型与算法描述.md          # 全部算法公式与数据流说明
 └── data/
     ├── .gitkeep

@@ -214,7 +214,7 @@
 | [database.py](file:///d:/trae/玻璃杯AI生成可视化设计系统/src/services/database.py) | L28-48 | 修改：`add_design` 新增 features/complexity/lora_model 字段 | ✅ **已修改** |
 | [index.html](file:///d:/trae/玻璃杯AI生成可视化设计系统/frontend/templates/index.html) | L596-665 | 优化按钮回调 + 结果展示 — 无反馈弹窗 | ❌ **待处理** |
 | [index.html](file:///d:/trae/玻璃杯AI生成可视化设计系统/frontend/templates/index.html) | L342-409 | 结果卡片 HTML — 无约束说明/对比区域 | ❌ **待处理** |
-| [算法与模型文档/数学模型与算法描述.md](file:///d:/trae/玻璃杯AI生成可视化设计系统/算法与模型文档/数学模型与算法描述.md) | 全文 | 10 章节算法描述，供论文/答辩用 | ✅ **新增** |
+| [documents/数学模型与算法描述.md](file:///d:/trae/玻璃杯AI生成可视化设计系统/documents/数学模型与算法描述.md) | 全文 | 10 章节算法描述，供论文/答辩用 | ✅ **v2.3** |
 | [image_generator.py](file:///d:/trae/玻璃杯AI生成可视化设计系统/src/services/image_generator.py) | L47-72 | **v2.3 新增**：`list_loras()` + `refresh_loras()` 动态 LoRA 管理 | ✅ **v2.3** |
 | [app.py](file:///d:/trae/玻璃杯AI生成可视化设计系统/app.py) | L264-284 | **v2.3 新增**：`/api/loras` + `/api/loras/refresh` 路由 | ✅ **v2.3** |
 | [app.py](file:///d:/trae/玻璃杯AI生成可视化设计系统/app.py) | L171-230 | **v2.3 修改**：`/api/optimize` 接受 `image_index`，调用 `store_optimization` | ✅ **v2.3** |
