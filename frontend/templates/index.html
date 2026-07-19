@@ -355,7 +355,7 @@
                     </div>
                     <div id="uploadArea" class="file-input-wrapper">
                         <input type="file" id="initImageUpload" accept="image/*" style="margin-right:8px;">
-                        <span id="removeUploadBtn" style="display:none;font-size:12px;color:#e5484d;cursor:pointer;user-select:none;vertical-align:middle;" onclick="clearUploadImage()">✕ 清除</span>
+                        <span id="removeUploadBtn" style="display:none;font-size:12px;color:#e5484d;cursor:pointer;user-select:none;vertical-align:middle;">✕ 清除</span>
                     </div>
                     <div id="lastArea" class="last-image-preview" style="display: none;">
                         <div id="lastImageHint" style="font-size:13px;color:#8a919e;padding:8px 0;">请从下方图片区域选择一张图片作为起始图</div>
@@ -1304,11 +1304,11 @@
             });
 
             /** 清除已上传的起始图文件 */
-            function clearUploadImage() {
+            document.getElementById('removeUploadBtn').addEventListener('click', function () {
                 const input = document.getElementById('initImageUpload');
                 input.value = '';
                 document.getElementById('removeUploadBtn').style.display = 'none';
-            }
+            });
 
             // 历史记录搜索
             const searchBox = document.getElementById('searchBox');
