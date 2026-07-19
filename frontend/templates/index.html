@@ -635,14 +635,18 @@
         function displayImages(images) {
             const grid = document.getElementById('imageGrid');
             grid.innerHTML = '';
+            const optResults = (currentDesign && currentDesign.optimization_results) || {};
             images.forEach((imgUrl, index) => {
+                const isOptimized = !!optResults[String(index)];
+                const statusIcon = isOptimized
+                    ? '<span class="opt-status-icon done">✓</span>'
+                    : '<span class="opt-status-icon pending">○</span>';
                 const div = document.createElement('div');
                 div.className = 'image-item';
-                // 用 download 属性，让浏览器原生下载；data URI 浏览器原生支持
                 div.innerHTML = `<img src="${imgUrl}" alt="设计图${index+1}">
+                    ${statusIcon}
                     <span class="download-btn" title="下载该图">⬇</span>`;
                 div.addEventListener('click', (e) => {
-                    // 点下载按钮时不触发选中
                     if (e.target.classList.contains('download-btn')) {
                         e.stopPropagation();
                         downloadImage(imgUrl, index);
@@ -744,6 +748,15 @@
                 document.getElementById('lastImagePreview').innerHTML =
                     `<img src="${design.images[0]}" alt="起始图预览">`;
             }
+
+            // 6. 显示该设计的 4 张图到左侧网格
+            if (design.images && design.images.length > 0) {
+                // 临时设置 currentDesign 让 displayImages 能读到 optimization_results
+                const savedDesign = currentDesign;
+                currentDesign = design;
+                displayImages(design.images);
+                currentDesign = savedDesign;
+            }
         }
 
         document.getElementById('optimizeBtn').addEventListener('click', async () => {
@@ -770,6 +783,7 @@
                 if (data.success) {
                     currentDesign = data.design;
                     currentOptImageIndex = imgIdx;
+                    displayImages(currentDesign.images);  // 刷新左侧状态标识
                     displayOptimizationResult(currentDesign.optimization_result, currentDesign);
                     loadDesignList();
                 } else {
@@ -1193,6 +1207,7 @@
                     currentDesign = data.design;
                     // 设置当前显示优化结果为刚优化的图片
                     currentOptImageIndex = imageIndex;
+                    displayImages(currentDesign.images);  // 刷新左侧状态标识
                     // 重新渲染列表（让 "待优化" → "已优化" / "部分优化" 标签生效）
                     renderDesignList(designsCache);
                     displayOptimizationResult(data.design.optimization_result, data.design);
