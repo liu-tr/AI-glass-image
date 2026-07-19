@@ -357,7 +357,7 @@
                         <input type="file" id="initImageUpload" accept="image/*">
                     </div>
                     <div id="lastArea" class="last-image-preview" style="display: none;">
-                        <img id="lastImagePreview" src="" alt="上次生成图">
+                        <div id="lastImageHint" style="font-size:13px;color:#8a919e;padding:8px 0;">请从上方图片区域选择一张图片作为起始图</div>
                     </div>
                     <div class="slider-row">
                         <label>重绘强度 <span id="strengthValue">0.55</span></label>
@@ -474,6 +474,7 @@
         let convergenceChart = null;
         let paretoChart = null;
         let lastGeneratedImages = [];         // 缓存最近一次生成的 4 张图（供图生图复用）
+        let lastSelectedImgIndex = -1;        // 图生图"复用上次图"选中的图片索引（-1 = 未选）
         let currentMode = 'txt2img';          // 'txt2img' | 'img2img'
         let designsCache = [];                // 缓存全部设计方案，避免重复请求
 
@@ -587,8 +588,8 @@
                             document.getElementById('loadingArea').style.display = 'none';
                             return;
                         }
-                        // 把第一张 data URI 转成 Blob
-                        initBlob = await (await fetch(lastGeneratedImages[0])).blob();
+                        const imgIdx = lastSelectedImgIndex >= 0 ? lastSelectedImgIndex : 0;
+                        initBlob = await (await fetch(lastGeneratedImages[imgIdx])).blob();
                     }
 
                     const fd = new FormData();
@@ -661,11 +662,9 @@
             selectedImageIndex = -1;
             // 缓存供图生图复用
             lastGeneratedImages = images.slice();
-            // 刷新上次图预览
-            const preview = document.getElementById('lastImagePreview');
-            if (lastGeneratedImages.length) {
-                preview.src = lastGeneratedImages[0];
-            }
+            // 新生成图时重置图生图选中索引
+            lastSelectedImgIndex = -1;
+            updateLastImageHint();
         }
 
         // 下载指定图片到本地
@@ -693,6 +692,28 @@
                 currentDesign.selected_image = currentDesign.images[index];
             }
             document.getElementById('optimizeBtn').style.display = 'block';
+
+            // 图生图"复用上次图"模式：同步记录选中图片
+            if (currentMode === 'img2img') {
+                const lastRadio = document.querySelector('input[name="init_source"][value="last"]');
+                if (lastRadio && lastRadio.checked && lastGeneratedImages[index]) {
+                    lastSelectedImgIndex = index;
+                    updateLastImageHint();
+                }
+            }
+        }
+
+        /** 更新图生图"复用上次图"区域的提示文字 */
+        function updateLastImageHint() {
+            const hint = document.getElementById('lastImageHint');
+            if (!hint) return;
+            if (lastSelectedImgIndex >= 0 && lastGeneratedImages[lastSelectedImgIndex]) {
+                hint.innerHTML = `已选择第 <strong>${lastSelectedImgIndex + 1}</strong> 张图片作为起始图（点击上方图片可更换）`;
+                hint.style.color = '#4c6ef5';
+            } else {
+                hint.textContent = '请从上方图片区域选择一张图片作为起始图';
+                hint.style.color = '#8a919e';
+            }
         }
 
         /** 将右侧历史记录加载到左侧生成表单 */
@@ -734,19 +755,18 @@
                 samplerSelect.value = design.sampler;
             }
 
-            // 5. 图生图模式：将设计的第一张图设为"上次图"用作起始图
+            // 5. 图生图模式：缓存图片供选择，切换到"上次图"源
             if (targetMode === 'img2img' && design.images && design.images.length > 0) {
                 // 缓存设计图供 img2img "last" 模式使用
                 lastGeneratedImages = design.images;
+                lastSelectedImgIndex = -1;
                 // 切换到"上次图"源
                 const lastRadio = document.querySelector('input[name="init_source"][value="last"]');
                 if (lastRadio) {
                     lastRadio.checked = true;
                     lastRadio.dispatchEvent(new Event('change'));
                 }
-                // 显示预览
-                document.getElementById('lastImagePreview').innerHTML =
-                    `<img src="${design.images[0]}" alt="起始图预览">`;
+                updateLastImageHint();
             }
 
             // 6. 显示该设计的 4 张图到左侧网格
