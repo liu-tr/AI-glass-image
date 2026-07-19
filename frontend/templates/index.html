@@ -837,7 +837,6 @@
 
             const card = document.getElementById('resultCard');
             card.style.display = 'block';
-            card.scrollIntoView({ behavior: 'smooth' });
             setTimeout(() => {
                 if (convergenceChart) convergenceChart.resize();
                 if (paretoChart) paretoChart.resize();
