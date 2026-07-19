@@ -357,7 +357,7 @@
                         <input type="file" id="initImageUpload" accept="image/*">
                     </div>
                     <div id="lastArea" class="last-image-preview" style="display: none;">
-                        <div id="lastImageHint" style="font-size:13px;color:#8a919e;padding:8px 0;">请从上方图片区域选择一张图片作为起始图</div>
+                        <div id="lastImageHint" style="font-size:13px;color:#8a919e;padding:8px 0;">请从下方图片区域选择一张图片作为起始图</div>
                     </div>
                     <div class="slider-row">
                         <label>重绘强度 <span id="strengthValue">0.55</span></label>
@@ -708,10 +708,10 @@
             const hint = document.getElementById('lastImageHint');
             if (!hint) return;
             if (lastSelectedImgIndex >= 0 && lastGeneratedImages[lastSelectedImgIndex]) {
-                hint.innerHTML = `已选择第 <strong>${lastSelectedImgIndex + 1}</strong> 张图片作为起始图（点击上方图片可更换）`;
+                hint.innerHTML = `已选择第 <strong>${lastSelectedImgIndex + 1}</strong> 张图片作为起始图（点击下方图片可更换）`;
                 hint.style.color = '#4c6ef5';
             } else {
-                hint.textContent = '请从上方图片区域选择一张图片作为起始图';
+                hint.textContent = '请从下方图片区域选择一张图片作为起始图';
                 hint.style.color = '#8a919e';
             }
         }

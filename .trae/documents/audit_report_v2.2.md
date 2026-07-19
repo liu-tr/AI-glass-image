@@ -154,6 +154,9 @@
 | **设计方案列表"部分优化"标签** | ✅ **v2.3** |
 | **优化结果导航箭头（◀ ▶ 多图切换）** | ✅ **v2.3** |
 | **缩略图选中 ↔ 左侧图网格状态同步** | ✅ **v2.3** |
+| **历史记录点击回填左侧表单（prompt/模式/LoRA/采样器 + 展示设计图到网格）** | ✅ **v2.3** |
+| **左侧网格图优化状态标识（绿色✓/灰色○，与缩略图一致）** | ✅ **v2.3** |
+| **图生图"复用上次图"改为图片主动选择交互（提示文字引导）** | ✅ **v2.3** |
 | **轮廓复杂度 C 提取（feature_extractor）** | ✅ **新增** |
 | **目标函数 C 联动（4 个函数）** | ✅ **新增** |
 | **complexity 传入 optimizer** | ✅ **新增** |
@@ -221,6 +224,9 @@
 | [database.py](file:///d:/trae/玻璃杯AI生成可视化设计系统/src/services/database.py) | L97-136 | **v2.3 新增**：`store_optimization()` + `get_optimization_status()` | ✅ **v2.3** |
 | [index.html](file:///d:/trae/玻璃杯AI生成可视化设计系统/frontend/templates/index.html) | L890-985 | **v2.3 重写**：`appendInlineContent` 缩略图状态标识 + 选中功能 | ✅ **v2.3** |
 | [index.html](file:///d:/trae/玻璃杯AI生成可视化设计系统/frontend/templates/index.html) | L777-835 | **v2.3 新增**：导航箭头 `updateOptNavArrows` + `navigateOptResult` | ✅ **v2.3** |
+| [index.html](file:///d:/trae/玻璃杯AI生成可视化设计系统/frontend/templates/index.html) | L720-760 | **v2.3 新增**：`loadDesignToForm()` 点击记录回填左侧表单 | ✅ **v2.3** |
+| [index.html](file:///d:/trae/玻璃杯AI生成可视化设计系统/frontend/templates/index.html) | L636-670 | **v2.3 修改**：`displayImages()` 左侧网格图增加优化状态标识 | ✅ **v2.3** |
+| [index.html](file:///d:/trae/玻璃杯AI生成可视化设计系统/frontend/templates/index.html) | L704-716 | **v2.3 新增**：`updateLastImageHint()` 图生图复用图选择交互 | ✅ **v2.3** |
 
 ---
 
