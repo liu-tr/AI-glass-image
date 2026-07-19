@@ -691,6 +691,61 @@
             document.getElementById('optimizeBtn').style.display = 'block';
         }
 
+        /** 将右侧历史记录加载到左侧生成表单 */
+        function loadDesignToForm(design) {
+            if (!design) return;
+
+            // 1. 填充 prompt
+            document.getElementById('prompt').value = design.prompt;
+
+            // 2. 切换模式 Tab
+            const targetMode = design.mode || 'txt2img';
+            document.querySelectorAll('.mode-tabs .tab').forEach(btn => {
+                const isTarget = btn.dataset.mode === targetMode;
+                btn.classList.toggle('active', isTarget);
+                if (isTarget) {
+                    btn.click();  // 触发模式切换（显隐 img2imgOptions）
+                }
+            });
+            currentMode = targetMode;
+
+            // 3. 填充 LoRA 设置
+            const loraToggle = document.getElementById('loraToggle');
+            const loraWeight = design.lora_weight || 0;
+            loraToggle.checked = loraWeight > 0;
+            loraToggle.dispatchEvent(new Event('change')); // 触发联动（显隐权重行）
+            if (loraWeight > 0) {
+                document.getElementById('loraWeight').value = loraWeight;
+                document.getElementById('loraWeightDisplay').textContent = loraWeight.toFixed(2);
+                // 选中对应 LoRA 模型
+                const loraSelect = document.getElementById('loraModelSelect');
+                if (design.lora_model && [...loraSelect.options].some(o => o.value === design.lora_model)) {
+                    loraSelect.value = design.lora_model;
+                }
+            }
+
+            // 4. 填充采样器
+            const samplerSelect = document.getElementById('samplerSelect');
+            if (design.sampler && [...samplerSelect.options].some(o => o.value === design.sampler)) {
+                samplerSelect.value = design.sampler;
+            }
+
+            // 5. 图生图模式：将设计的第一张图设为"上次图"用作起始图
+            if (targetMode === 'img2img' && design.images && design.images.length > 0) {
+                // 缓存设计图供 img2img "last" 模式使用
+                lastGeneratedImages = design.images;
+                // 切换到"上次图"源
+                const lastRadio = document.querySelector('input[name="init_source"][value="last"]');
+                if (lastRadio) {
+                    lastRadio.checked = true;
+                    lastRadio.dispatchEvent(new Event('change'));
+                }
+                // 显示预览
+                document.getElementById('lastImagePreview').innerHTML =
+                    `<img src="${design.images[0]}" alt="起始图预览">`;
+            }
+        }
+
         document.getElementById('optimizeBtn').addEventListener('click', async () => {
             if (!currentDesign) return;
             const btn = document.getElementById('optimizeBtn');
@@ -950,7 +1005,12 @@
                     e.stopPropagation();
                     deleteDesign(design.id);
                 });
-                item.addEventListener('click', () => toggleDesign(design));
+                item.addEventListener('click', (e) => {
+                    // 点击删除按钮或下载按钮时跳过
+                    if (e.target.closest('.btn-small') || e.target.closest('.download-btn')) return;
+                    loadDesignToForm(design);
+                    toggleDesign(design);
+                });
                 list.appendChild(item);
             });
 
