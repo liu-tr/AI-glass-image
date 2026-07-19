@@ -1135,13 +1135,7 @@
         function toggleDesign(design) {
             // 如果点击的是已展开项 → 收起
             if (currentDesign && currentDesign.id === design.id) {
-                const hadResult = !!(currentDesign.optimization_result || currentDesign.optimization_results);
                 collapseCurrent();
-                // 收起后若有优化结果，保持 resultCard 可见并滚动到该区域
-                if (hadResult) {
-                    document.getElementById('resultCard').style.display = 'block';
-                    document.getElementById('resultCard').scrollIntoView({ behavior: 'smooth', block: 'start' });
-                }
                 return;
             }
             // 展开新项
