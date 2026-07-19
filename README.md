@@ -73,8 +73,6 @@ python app.py
     └── designs.json                # 运行时生成（已 gitignore）
 ```
 
-`.launcher/` 是秋葉 A绘世启动器便携版的解压目录（47 个 DLL/exe），**不在仓库内**，已在 .gitignore 排除。
-
 ---
 
 ## 接口一览
