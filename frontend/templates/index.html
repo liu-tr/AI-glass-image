@@ -454,6 +454,35 @@
                             </div>
                         </div>
                     </div>
+
+                    <!-- PI 分级说明（点击展开/收起） -->
+                    <div style="margin-top:10px;">
+                        <div onclick="togglePiDetail()" style="cursor:pointer;font-size:12px;color:#2e7d32;user-select:none;display:flex;align-items:center;gap:4px;">
+                            <span id="piToggleIcon">▶</span>
+                            <span>了解 PI 值的含义与量产等级划分</span>
+                        </div>
+                        <div id="piDetail" style="display:none;margin-top:8px;background:#fff;border-radius:8px;border:1px solid #c8e6c9;overflow:hidden;">
+                            <div style="padding:10px 14px;font-size:12px;color:#374151;line-height:1.6;border-bottom:1px solid #e8f5e9;">
+                                <strong>PI（Production Index）</strong> 综合四项工艺指标的归一化加权评分，取值范围 <strong>0 ~ 1</strong>。数值越高，表明该设计方案越适合大规模工业量产。
+                            </div>
+                            <table style="width:100%;border-collapse:collapse;font-size:12px;">
+                                <thead>
+                                    <tr style="background:#f0f7ff;">
+                                        <th style="padding:6px 10px;text-align:left;border-bottom:1px solid #e0e0e0;font-weight:600;color:#374151;">PI 范围</th>
+                                        <th style="padding:6px 10px;text-align:left;border-bottom:1px solid #e0e0e0;font-weight:600;color:#374151;">评价</th>
+                                        <th style="padding:6px 10px;text-align:left;border-bottom:1px solid #e0e0e0;font-weight:600;color:#374151;">说明</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr><td style="padding:5px 10px;border-bottom:1px solid #f0f0f0;">PI ≥ 0.85</td><td style="padding:5px 10px;border-bottom:1px solid #f0f0f0;font-weight:600;color:#2e7d32;">非常易量产</td><td style="padding:5px 10px;border-bottom:1px solid #f0f0f0;">各项目标均处最优区间</td></tr>
+                                    <tr><td style="padding:5px 10px;border-bottom:1px solid #f0f0f0;">0.75 ≤ PI < 0.85</td><td style="padding:5px 10px;border-bottom:1px solid #f0f0f0;font-weight:600;color:#558b2f;">易量产</td><td style="padding:5px 10px;border-bottom:1px solid #f0f0f0;">整体表现良好</td></tr>
+                                    <tr><td style="padding:5px 10px;border-bottom:1px solid #f0f0f0;">0.60 ≤ PI < 0.75</td><td style="padding:5px 10px;border-bottom:1px solid #f0f0f0;font-weight:600;color:#f57f17;">可量产</td><td style="padding:5px 10px;border-bottom:1px solid #f0f0f0;">部分指标需要关注</td></tr>
+                                    <tr><td style="padding:5px 10px;border-bottom:1px solid #f0f0f0;">0.45 ≤ PI < 0.60</td><td style="padding:5px 10px;border-bottom:1px solid #f0f0f0;font-weight:600;color:#e65100;">较难量产</td><td style="padding:5px 10px;border-bottom:1px solid #f0f0f0;">多项指标偏离较远</td></tr>
+                                    <tr><td style="padding:5px 10px;">PI < 0.45</td><td style="padding:5px 10px;font-weight:600;color:#c62828;">不建议量产</td><td style="padding:5px 10px;">需重新调整设计</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
                 </div>
 
                 <div class="result-section">
@@ -865,6 +894,19 @@
             } else {
                 piSection.style.display = 'none';
             }
+
+            // PI 分级说明展开/收起
+            window.togglePiDetail = function() {
+                const el = document.getElementById('piDetail');
+                const icon = document.getElementById('piToggleIcon');
+                if (el.style.display === 'none') {
+                    el.style.display = 'block';
+                    icon.textContent = '▼';
+                } else {
+                    el.style.display = 'none';
+                    icon.textContent = '▶';
+                }
+            };
 
             const tbody = document.getElementById('paramTableBody');
             tbody.innerHTML = '';
