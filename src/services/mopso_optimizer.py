@@ -90,6 +90,33 @@ class MOPSOOptimizer:
         self.weights = (-1.0,) * len(objective_functions)  # 全部最小化
         self.iteration_history = []
 
+    PI_WEIGHTS = {"wall_uniformity": 0.30, "defect_rate": 0.35,
+                   "energy_consumption": 0.15, "heat_resistance": 0.20}
+    PI_GRADES = [
+        (0.85, "非常易量产"), (0.75, "易量产"),
+        (0.60, "可量产"), (0.45, "较难量产"),
+        (0.00, "不建议量产"),
+    ]
+
+    def _normalize_objectives(self, pareto_front):
+        """在 Pareto 前沿内计算各目标的最小/最大值。"""
+        objectives = [p.fitness.values for p in pareto_front]
+        n_obj = len(objectives[0])
+        mins = [min(v[i] for v in objectives) for i in range(n_obj)]
+        maxs = [max(v[i] for v in objectives) for i in range(n_obj)]
+        return mins, maxs
+
+    def _normalized_score(self, values, mins, maxs, weights):
+        """最小最大归一化后加权。越小越优 → 映射到[0,1]。"""
+        score = 0.0
+        for i, v in enumerate(values):
+            if maxs[i] == mins[i]:
+                norm = 1.0
+            else:
+                norm = (maxs[i] - v) / (maxs[i] - mins[i])
+            score += weights[i] * norm
+        return score
+
     def _generate_particle(self):
         values = [random.uniform(self.bounds[name][0], self.bounds[name][1])
                   for name in self.param_names]
@@ -184,35 +211,55 @@ class MOPSOOptimizer:
             })
 
     def select_best_solution(self, pareto_front):
-        """从帕累托前沿中选择综合最优解（加权评分最小）"""
+        """从帕累托前沿中选择综合最优解（先归一化再加权）。"""
         if not len(pareto_front):
             return None
 
+        mins, maxs = self._normalize_objectives(pareto_front)
         best_solution = None
-        best_score = float('inf')
-        weights = [0.25, 0.25, 0.25, 0.25]  # 四个目标权重相等
+        best_score = -float('inf')
+        weights = [0.25, 0.25, 0.25, 0.25]
 
         for solution in pareto_front:
-            score = sum(w * v for w, v in zip(weights, solution.fitness.values))
-            if score < best_score:
+            score = self._normalized_score(solution.fitness.values, mins, maxs, weights)
+            if score > best_score:
                 best_score = score
                 best_solution = solution
 
         return best_solution
 
+    def calculate_pi(self, values, mins, maxs):
+        """量产可行性指数 PI = Σ w_i * S_i。"""
+        w = [self.PI_WEIGHTS[k] for k in
+             ("wall_uniformity", "defect_rate", "energy_consumption", "heat_resistance")]
+        return round(self._normalized_score(values, mins, maxs, w), 4)
+
+    def get_pi_grade(self, pi):
+        """根据 PI 值返回量产等级。"""
+        for threshold, grade in self.PI_GRADES:
+            if pi >= threshold:
+                return grade
+        return "不建议量产"
+
     def pareto_to_dict(self, pareto_front):
-        """将帕累托前沿转换为可JSON序列化的字典列表"""
+        """将帕累托前沿转换为可JSON序列化的字典列表（含 PI 指数）。"""
+        if not len(pareto_front):
+            return []
+        mins, maxs = self._normalize_objectives(pareto_front)
         result = []
         for solution in pareto_front:
+            values = solution.fitness.values
             result.append({
                 "params": {k: round(float(v), 2)
                            for k, v in zip(self.param_names, solution)},
                 "objectives": {
-                    "wall_uniformity": round(solution.fitness.values[0] * 100, 4),
-                    "defect_rate": round(solution.fitness.values[1] * 100, 4),
-                    "energy_consumption": round(solution.fitness.values[2], 2),
-                    "heat_resistance": round((1 - solution.fitness.values[3]) * 100, 4)
-                }
+                    "wall_uniformity": round(values[0] * 100, 4),
+                    "defect_rate": round(values[1] * 100, 4),
+                    "energy_consumption": round(values[2], 2),
+                    "heat_resistance": round((1 - values[3]) * 100, 4)
+                },
+                "pi": self.calculate_pi(values, mins, maxs),
+                "pi_grade": self.get_pi_grade(self.calculate_pi(values, mins, maxs))
             })
         return result
 

@@ -1,8 +1,8 @@
 # 系统符合性审计报告
 
 > **审计依据**：`关于选题/7.16新增参考要求.md`
-> **审计对象**：玻璃杯AI生成可视化设计系统（当前代码 v2.3）
-> **审计日期**：2026-07-18（第 3 次更新）
+> **审计对象**：玻璃杯AI生成可视化设计系统（当前代码 v2.4）
+> **审计日期**：2026-07-20（第 4 次更新）
 > **审计范围**：功能完整性、双向耦合逻辑、数学联动、用户体验
 
 ---
@@ -145,6 +145,9 @@
 | 7 种采样器切换 | ✅ |
 | input_guard 工业负面词预检 | ✅ |
 | 图生图重绘强度滑块 | ✅ |
+| **最优解归一化加权** | ✅ **v2.4** |
+| **量产可行性评价PI** | ✅ **v2.4** |
+| **废品率平方惩罚** | ✅ **v2.4** |
 | 历史记录搜索 | ✅ |
 | 每图可下载（hover 按钮） | ✅ |
 | 一键导出 CSV（含复杂度列） | ✅ |
@@ -227,6 +230,9 @@
 | [index.html](file:///d:/trae/玻璃杯AI生成可视化设计系统/frontend/templates/index.html) | L720-760 | **v2.3 新增**：`loadDesignToForm()` 点击记录回填左侧表单 | ✅ **v2.3** |
 | [index.html](file:///d:/trae/玻璃杯AI生成可视化设计系统/frontend/templates/index.html) | L636-670 | **v2.3 修改**：`displayImages()` 左侧网格图增加优化状态标识 | ✅ **v2.3** |
 | [index.html](file:///d:/trae/玻璃杯AI生成可视化设计系统/frontend/templates/index.html) | L704-716 | **v2.3 新增**：`updateLastImageHint()` 图生图复用图选择交互 | ✅ **v2.3** |
+| [mopso_optimizer.py](file:///d:/trae/玻璃杯AI生成可视化设计系统/src/services/mopso_optimizer.py) | L101-118 | **v2.4 新增**：`_normalize_objectives` + `_normalized_score` 归一化方法 | ✅ **v2.4** |
+| [mopso_optimizer.py](file:///d:/trae/玻璃杯AI生成可视化设计系统/src/services/mopso_optimizer.py) | L231-242 | **v2.4 新增**：`calculate_pi` + `get_pi_grade` 量产评价 | ✅ **v2.4** |
+| [objective_functions.py](file:///d:/trae/玻璃杯AI生成可视化设计系统/src/services/objective_functions.py) | L47-75 | **v2.4 修改**：废品率平方惩罚模型 | ✅ **v2.4** |
 
 ---
 

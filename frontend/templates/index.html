@@ -435,6 +435,27 @@
                     </div>
                 </div>
 
+                <!-- 量产可行性评价 PI v2.4 -->
+                <div id="piSection" style="display:none; margin-top:16px;">
+                    <div style="background:linear-gradient(135deg,#f0f7ff,#e8f5e9);border-radius:10px;padding:16px 20px;border:1px solid #c8e6c9;">
+                        <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;">
+                            <div>
+                                <div style="font-size:14px;font-weight:600;color:#1f2329;">量产可行性指数</div>
+                                <div style="font-size:12px;color:#6b7280;margin-top:2px;">Production Index（PI）— 综合四项工艺指标</div>
+                            </div>
+                            <div style="display:flex;align-items:center;gap:16px;">
+                                <div style="text-align:center;">
+                                    <div id="piScore" style="font-size:28px;font-weight:700;color:#2e7d32;">-</div>
+                                    <div style="font-size:11px;color:#6b7280;">PI 值</div>
+                                </div>
+                                <div id="piGradeBadge" style="background:#2e7d32;color:#fff;padding:6px 16px;border-radius:20px;font-size:14px;font-weight:600;">
+                                    -
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
                 <div class="result-section">
                     <div class="result-title">最优工艺参数：</div>
                     <table class="param-table">
@@ -826,6 +847,24 @@
             document.getElementById('optDefect').textContent = objectives.defect_rate + '%';
             document.getElementById('optEnergy').textContent = objectives.energy_consumption;
             document.getElementById('optHeat').textContent = objectives.heat_resistance + '%';
+
+            // 量产可行性指数 PI v2.4
+            const piSection = document.getElementById('piSection');
+            if (result.pi !== undefined && result.pi !== null) {
+                document.getElementById('piScore').textContent = result.pi.toFixed(4);
+                const badge = document.getElementById('piGradeBadge');
+                badge.textContent = result.pi_grade || '计算中';
+                // 根据等级设置徽章颜色
+                const gradeColors = {
+                    '非常易量产': '#1b5e20', '易量产': '#2e7d32',
+                    '可量产': '#f57f17', '较难量产': '#e65100', '不建议量产': '#c62828'
+                };
+                const bg = gradeColors[result.pi_grade] || '#2e7d32';
+                badge.style.background = bg;
+                piSection.style.display = 'block';
+            } else {
+                piSection.style.display = 'none';
+            }
 
             const tbody = document.getElementById('paramTableBody');
             tbody.innerHTML = '';

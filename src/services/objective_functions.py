@@ -49,25 +49,27 @@ def calculate_defect_rate(params):
     返回值: 废品率 0~1
 
     C 影响：复杂轮廓废品基线更高，对参数偏离更敏感。
+
+    v2.4 改进：绝对值偏离 → 平方偏离惩罚。平方惩罚更真实地反映
+    工艺规律——小偏差容忍度高，大偏差导致废品率快速上升。
     """
     complexity = params.get("complexity", 0.5)
 
     # 基础废品率：C=0 时 1%，C=1 时 4%
     base_rate = 0.01 + complexity * 0.04
 
-    # 温度偏离（最佳 620°C）
+    # 温度偏离（最佳 620°C）— 平方惩罚
     temp_deviation = abs(params["heating_temp"] - 620)
-    # C 越高，温度偏离惩罚越大
     temp_sensitivity = 1.0 + complexity * 1.5  # 1.0~2.5x
-    temp_penalty = temp_deviation * temp_sensitivity / 2000
+    temp_penalty = (temp_deviation ** 2) * temp_sensitivity / 140000
 
-    # 时间偏离（最佳 90s）
+    # 时间偏离（最佳 90s）— 平方惩罚
     time_deviation = abs(params["heating_time"] - 90)
     time_sensitivity = 1.0 + complexity * 1.0  # 1.0~2.0x
-    time_penalty = time_deviation * time_sensitivity / 3000
+    time_penalty = (time_deviation ** 2) * time_sensitivity / 270000
 
-    # 压力影响
-    pressure_penalty = abs(params["blowing_pressure"] - 0.3) / 5
+    # 压力影响 — 平方惩罚
+    pressure_penalty = (params["blowing_pressure"] - 0.3) ** 2 / 0.04 * 0.04
 
     total_rate = base_rate + temp_penalty + time_penalty + pressure_penalty
     return float(min(total_rate, 0.4))  # 最大 40%（复杂杯型放宽上限）

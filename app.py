@@ -200,6 +200,11 @@ def optimize_params():
         # 选择最优解（综合权重）
         best_solution = optimizer.select_best_solution(pareto_front)
 
+        # 计算量产可行性指数 PI v2.4
+        mins, maxs = optimizer._normalize_objectives(pareto_front)
+        pi = optimizer.calculate_pi(best_solution.fitness.values, mins, maxs)
+        pi_grade = optimizer.get_pi_grade(pi)
+
         # 获取迭代历史用于可视化
         iteration_history = optimizer.get_iteration_history(logbook)
 
@@ -219,6 +224,8 @@ def optimize_params():
                 "energy_consumption": round(best_solution.fitness.values[2], 2),
                 "heat_resistance": round((1 - best_solution.fitness.values[3]) * 100, 2)
             },
+            "pi": pi,
+            "pi_grade": pi_grade,
             "pareto_front": optimizer.pareto_to_dict(pareto_front),
             "iteration_history": iteration_history
         }
