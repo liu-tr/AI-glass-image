@@ -80,6 +80,10 @@ class JSONDatabase:
         data = [d for d in data if d["id"] != design_id]
         self._write(data)
 
+    def clear_all(self):
+        """清空全部设计方案"""
+        self._write([])
+
     def get_all_designs(self):
         """获取所有设计方案"""
         return self._read()

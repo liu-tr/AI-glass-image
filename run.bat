@@ -18,7 +18,7 @@ if errorlevel 1 (
 )
 
 REM 2. Check dependencies, install if missing
-python -c "import flask, flask_cors, numpy, requests" >nul 2>nul
+python -c "import flask, flask_cors, numpy, requests, translators" >nul 2>nul
 if errorlevel 1 (
     echo [INFO] Missing dependencies detected. Installing from requirements.txt ...
     python -m pip install -r requirements.txt

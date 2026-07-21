@@ -242,7 +242,24 @@ def optimize_params():
 def get_all_designs():
     try:
         designs = db.get_all_designs()
+        summary = request.args.get('summary', 'false').lower() == 'true'
+        if summary:
+            # 摘要模式：仅返回元数据，不返回 base64 图片
+            for d in designs:
+                img_count = len(d.get('images', []))
+                d['image_count'] = img_count
+                d.pop('images', None)
         return jsonify({"success": True, "designs": designs})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route('/api/designs', methods=['DELETE'])
+def clear_all_designs():
+    """清空全部设计方案"""
+    try:
+        db.clear_all()
+        return jsonify({"success": True})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 

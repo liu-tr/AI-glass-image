@@ -314,6 +314,9 @@
                 <div class="input-group">
                     <label for="prompt">输入设计需求（中文）：</label>
                     <textarea id="prompt" placeholder="例如：简约风格，圆柱形，透明玻璃，适合咖啡饮用..."></textarea>
+                    <div id="translateHint" style="font-size:12px;color:#4caf50;margin-top:4px;display:none;">
+                        🌐 检测到中文，将自动翻译为英文后生成
+                    </div>
                 </div>
                 <!-- LoRA 控制区 -->
                 <div class="lora-section">
@@ -386,7 +389,10 @@
             <div class="card">
                 <div class="card-title" style="display:flex;justify-content:space-between;align-items:center;">
                     <span>设计方案列表</span>
-                    <button class="btn-icon" id="exportCsvBtn" title="导出 CSV">📥 导出 CSV</button>
+                    <div style="display:flex;gap:6px;">
+                        <button class="btn-icon" id="exportCsvBtn" title="导出 CSV">📥 导出 CSV</button>
+                        <button class="btn-icon" id="clearAllBtn" title="清空全部历史" style="color:#c62828;">🗑 清空历史</button>
+                    </div>
                 </div>
                 <div class="search-row">
                     <input type="text" id="searchBox" placeholder="搜索 prompt...">
@@ -1051,7 +1057,7 @@
 
         async function loadDesignList(keyword) {
             try {
-                const response = await fetch('/api/designs');
+                const response = await fetch('/api/designs?summary=true');
                 const data = await response.json();
                 if (data.success) {
                     let designs = data.designs;
@@ -1065,6 +1071,29 @@
             } catch (error) {
                 console.error('加载设计列表失败:', error);
             }
+        }
+
+        /** 按需加载某个设计的完整数据（含 images） */
+        async function ensureDesignLoaded(designId) {
+            // 检查缓存中是否已有完整数据
+            const cached = designsCache.find(d => d.id === designId);
+            if (cached && cached.images && cached.images.length > 0) {
+                return cached;
+            }
+            // 按需请求完整数据
+            try {
+                const resp = await fetch(`/api/designs/${designId}`);
+                const data = await resp.json();
+                if (data.success && data.design) {
+                    // 更新缓存
+                    const idx = designsCache.findIndex(d => d.id === designId);
+                    if (idx >= 0) designsCache[idx] = data.design;
+                    return data.design;
+                }
+            } catch (err) {
+                console.error('加载设计详情失败:', err);
+            }
+            return null;
         }
 
         function renderDesignList(designs) {
@@ -1113,18 +1142,24 @@
                     </div>`;
                 // 如果当前是展开状态，直接追加缩略图 + 优化按钮
                 if (isExpanded) {
-                    appendInlineContent(item, design);
+                    // 缓存中可能是摘要（无 images），从 currentDesign 借
+                    const displayDesign = (!design.images && currentDesign && currentDesign.images)
+                        ? currentDesign : design;
+                    appendInlineContent(item, displayDesign);
                 }
                 // 删除按钮
                 item.querySelector('.btn-small').addEventListener('click', (e) => {
                     e.stopPropagation();
                     deleteDesign(design.id);
                 });
-                item.addEventListener('click', (e) => {
+                item.addEventListener('click', async (e) => {
                     // 点击删除按钮或下载按钮时跳过
                     if (e.target.closest('.btn-small') || e.target.closest('.download-btn')) return;
-                    loadDesignToForm(design);
-                    toggleDesign(design);
+                    // 按需加载完整数据（含图片）
+                    const fullDesign = await ensureDesignLoaded(design.id);
+                    if (!fullDesign) return;
+                    loadDesignToForm(fullDesign);
+                    toggleDesign(fullDesign);
                 });
                 list.appendChild(item);
             });
@@ -1362,6 +1397,14 @@
             const sliderVal = document.getElementById('strengthValue');
             slider.addEventListener('input', () => { sliderVal.textContent = slider.value; });
 
+            // 中文输入检测 → 显示翻译提示
+            const promptEl = document.getElementById('prompt');
+            const hintEl = document.getElementById('translateHint');
+            promptEl.addEventListener('input', () => {
+                const hasChinese = /[\u4e00-\u9fff\u3400-\u4dbf]/.test(promptEl.value);
+                hintEl.style.display = hasChinese ? 'block' : 'none';
+            });
+
             // 起始图源切换
             document.querySelectorAll('input[name="init_source"]').forEach(r => {
                 r.addEventListener('change', () => {
@@ -1410,6 +1453,26 @@
             // CSV 导出
             document.getElementById('exportCsvBtn').addEventListener('click', () => {
                 window.open('/api/designs/export/csv', '_blank');
+            });
+
+            // 清空全部历史
+            document.getElementById('clearAllBtn').addEventListener('click', async () => {
+                if (!confirm('⚠ 确定清空全部设计方案吗？此操作不可恢复！')) return;
+                try {
+                    const resp = await fetch('/api/designs', { method: 'DELETE' });
+                    const data = await resp.json();
+                    if (data.success) {
+                        designsCache = [];
+                        currentDesign = null;
+                        selectedThumbnailIndex = -1;
+                        renderDesignList(designsCache);
+                        document.getElementById('resultCard').style.display = 'none';
+                    } else {
+                        alert('清空失败');
+                    }
+                } catch (err) {
+                    alert('清空失败：' + err.message);
+                }
             });
 
             // 导航箭头 ← →

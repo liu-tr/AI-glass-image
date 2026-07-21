@@ -1,5 +1,9 @@
 import requests
 import base64
+import re
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 class GlassImageGenerator:
@@ -8,6 +12,7 @@ class GlassImageGenerator:
     仅接入本地 Stable Diffusion WebUI（A1111，需要启动时带 --api）。
     - txt2img: POST /sdapi/v1/txt2img
     - img2img: POST /sdapi/v1/img2img
+    自动将中文 prompt 翻译为英文（提升 SD 生成效果）。
     """
 
     def __init__(self, api_url=None, api_key=None):
@@ -26,6 +31,35 @@ class GlassImageGenerator:
             "indoor, room, scene, person, character, 2d, illustration, painting, "
             "low quality, bad lighting"
         )
+
+    # ── 中文→英文自动翻译 ──────────────────────────────────────
+    _CHINESE_RE = re.compile(r'[\u4e00-\u9fff\u3400-\u4dbf\uf900-\ufaff]')
+
+    def _has_chinese(self, text):
+        """检测是否包含中文字符。"""
+        return bool(self._CHINESE_RE.search(text))
+
+    def _translate_to_english(self, text):
+        """将中文文本翻译为英文。翻译失败时返回原文。"""
+        if not self._has_chinese(text):
+            return text
+        try:
+            import translators as ts
+            result = ts.translate_text(text, translator='bing', from_language='auto', to_language='en')
+            if result and result.strip():
+                logger.info('中文→英文翻译: "%s" → "%s"', text, result.strip())
+                return result.strip()
+        except Exception:
+            try:
+                import translators as ts
+                result = ts.translate_text(text, translator='google', from_language='auto', to_language='en')
+                if result and result.strip():
+                    logger.info('中文→英文翻译(google): "%s" → "%s"', text, result.strip())
+                    return result.strip()
+            except Exception:
+                pass
+        logger.warning('中文翻译失败，保留原文: "%s"', text)
+        return text
 
     def test_connection(self):
         """测试SD WebUI连接。用 /sdapi/v1/options 探活（仅在 --api 启动时存在）。
@@ -75,7 +109,9 @@ class GlassImageGenerator:
         """文生图（txt2img）。返回base64 data URI列表。
 
         lora_model: LoRA 模型名（不含 .safetensors），默认 glasscup_lora
+        自动将中文 prompt 翻译为英文。
         """
+        prompt = self._translate_to_english(prompt)
         return self._generate_sd(prompt, num_images, lora_weight=lora_weight, sampler_name=sampler_name, lora_model=lora_model)
 
     def generate_img2img(self, init_image_b64, prompt, denoising_strength=0.55, num_images=4, lora_weight=0, sampler_name="Euler a", lora_model="glasscup_lora"):
@@ -84,7 +120,9 @@ class GlassImageGenerator:
         init_image_b64: base64 编码的起始图（不带 data:image/png;base64, 前缀）
         denoising_strength: 0.0~1.0，越高越偏离原图
         lora_model: LoRA 模型名（不含 .safetensors），默认 glasscup_lora
+        自动将中文 prompt 翻译为英文。
         """
+        prompt = self._translate_to_english(prompt)
         return self._generate_img2img(init_image_b64, prompt, denoising_strength, num_images, lora_weight=lora_weight, sampler_name=sampler_name, lora_model=lora_model)
 
     def _post_sd(self, endpoint, payload):
