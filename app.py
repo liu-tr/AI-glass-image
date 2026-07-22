@@ -20,6 +20,7 @@ from services.objective_functions import (
     calculate_heat_resistance
 )
 from services.database import JSONDatabase
+from services.prompt_library import translate_semantic, get_semantic_keys, get_cup_keys
 
 app = Flask(__name__, template_folder='frontend/templates', static_folder='frontend/static')
 CORS(app)
@@ -61,6 +62,7 @@ def generate_images():
         lora_weight = request.json.get('lora_weight', 0)
         sampler_name = request.json.get('sampler_name', 'Euler a')
         lora_model = request.json.get('lora_model', None)
+        auto_translate = request.json.get('auto_translate', True)
         if not prompt:
             return jsonify({"error": "请输入设计需求"}), 400
 
@@ -71,7 +73,8 @@ def generate_images():
             images = [build_rejection_image(reason, blocked_term) for _ in range(4)]
         elif is_sd_available():
             images = generator.generate(prompt, num_images=4, lora_weight=lora_weight,
-                                        sampler_name=sampler_name, lora_model=lora_model)
+                                        sampler_name=sampler_name, lora_model=lora_model,
+                                        auto_translate=auto_translate)
         else:
             return jsonify({"error": "SD WebUI 未连接，无法生成图片"}), 503
 
@@ -93,6 +96,7 @@ def img2img_images():
         lora_weight = request.form.get('lora_weight', 0, type=float)
         sampler_name = request.form.get('sampler_name', 'Euler a')
         lora_model = request.form.get('lora_model', None)
+        auto_translate = request.form.get('auto_translate', 'true').lower() == 'true'
 
         if not is_sd_available():
             return jsonify({"error": "SD WebUI 未连接，无法生成图片"}), 503
@@ -121,7 +125,8 @@ def img2img_images():
         init_b64 = base64.b64encode(file.read()).decode('ascii')
 
         images = generator.generate_img2img(init_b64, prompt, denoising_strength=strength,
-                                            lora_weight=lora_weight, sampler_name=sampler_name, lora_model=lora_model)
+                                            lora_weight=lora_weight, sampler_name=sampler_name, lora_model=lora_model,
+                                            auto_translate=auto_translate)
         design = db.add_design(prompt, images, mode="img2img", lora_weight=lora_weight,
                                sampler=sampler_name, lora_model=lora_model)
         return jsonify({"success": True, "design": design})
@@ -315,6 +320,38 @@ def refresh_loras():
         return jsonify({"success": True, "loras": loras})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
+
+@app.route('/api/semantic/preview', methods=['POST'])
+def semantic_preview():
+    """预览心理语义翻译效果（不实际生成图片）。
+    返回匹配到的心理语义词、杯型名称，以及替换后的完整文本。
+    """
+    try:
+        prompt = request.json.get('prompt', '')
+        if not prompt:
+            return jsonify({"error": "请输入提示词"}), 400
+        processed, matched, preview = translate_semantic(prompt)
+        return jsonify({
+            "success": True,
+            "original": prompt,
+            "processed": processed,
+            "matched_terms": matched,
+            "preview": preview,
+            "has_match": processed != prompt
+        })
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route('/api/semantic/keys', methods=['GET'])
+def semantic_keys():
+    """返回所有支持的心理语义词和杯型名称。"""
+    return jsonify({
+        "success": True,
+        "semantic_keys": get_semantic_keys(),
+        "cup_keys": get_cup_keys()
+    })
 
 
 @app.route('/api/designs/export/csv', methods=['GET'])

@@ -3,6 +3,8 @@ import base64
 import re
 import logging
 
+from .prompt_library import translate_semantic
+
 logger = logging.getLogger(__name__)
 
 
@@ -12,7 +14,10 @@ class GlassImageGenerator:
     仅接入本地 Stable Diffusion WebUI（A1111，需要启动时带 --api）。
     - txt2img: POST /sdapi/v1/txt2img
     - img2img: POST /sdapi/v1/img2img
-    自动将中文 prompt 翻译为英文（提升 SD 生成效果）。
+
+    Prompt 处理流程（按顺序）：
+      1. 心理语义+杯型映射（始终执行）：translate_semantic() 将中文语义词/杯型替换为 SD 英文描述
+      2. 中文→英文翻译（由 auto_translate 开关控制）：_translate_to_english() 通过 Bing/Google 翻译
     """
 
     def __init__(self, api_url=None, api_key=None):
@@ -105,24 +110,36 @@ class GlassImageGenerator:
             pass
         return True
 
-    def generate(self, prompt, num_images=4, lora_weight=0, sampler_name="Euler a", lora_model="glasscup_lora"):
+    def generate(self, prompt, num_images=4, lora_weight=0, sampler_name="Euler a", lora_model="glasscup_lora",
+                 auto_translate=True):
         """文生图（txt2img）。返回base64 data URI列表。
 
         lora_model: LoRA 模型名（不含 .safetensors），默认 glasscup_lora
-        自动将中文 prompt 翻译为英文。
+        auto_translate: 是否启用中文→英文自动翻译（Bing/Google），默认 True
+        心理语义+杯型映射始终执行（不受此开关影响）。
         """
-        prompt = self._translate_to_english(prompt)
+        # 步骤1：心理语义+杯型映射（始终执行）
+        prompt, _, _ = translate_semantic(prompt)
+        # 步骤2：中文→英文翻译（由开关控制）
+        if auto_translate:
+            prompt = self._translate_to_english(prompt)
         return self._generate_sd(prompt, num_images, lora_weight=lora_weight, sampler_name=sampler_name, lora_model=lora_model)
 
-    def generate_img2img(self, init_image_b64, prompt, denoising_strength=0.55, num_images=4, lora_weight=0, sampler_name="Euler a", lora_model="glasscup_lora"):
+    def generate_img2img(self, init_image_b64, prompt, denoising_strength=0.55, num_images=4, lora_weight=0,
+                         sampler_name="Euler a", lora_model="glasscup_lora", auto_translate=True):
         """图生图（img2img）。
 
         init_image_b64: base64 编码的起始图（不带 data:image/png;base64, 前缀）
         denoising_strength: 0.0~1.0，越高越偏离原图
         lora_model: LoRA 模型名（不含 .safetensors），默认 glasscup_lora
-        自动将中文 prompt 翻译为英文。
+        auto_translate: 是否启用中文→英文自动翻译（Bing/Google），默认 True
+        心理语义+杯型映射始终执行（不受此开关影响）。
         """
-        prompt = self._translate_to_english(prompt)
+        # 步骤1：心理语义+杯型映射（始终执行）
+        prompt, _, _ = translate_semantic(prompt)
+        # 步骤2：中文→英文翻译（由开关控制）
+        if auto_translate:
+            prompt = self._translate_to_english(prompt)
         return self._generate_img2img(init_image_b64, prompt, denoising_strength, num_images, lora_weight=lora_weight, sampler_name=sampler_name, lora_model=lora_model)
 
     def _post_sd(self, endpoint, payload):

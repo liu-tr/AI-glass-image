@@ -292,6 +292,47 @@
         .nav-arrow:disabled { opacity: 0.3; cursor: not-allowed; }
         .nav-position { font-size: 13px; color: #6b7280; min-width: 80px; text-align: center; }
 
+        /* ---- 心理语义翻译开关 ---- */
+        .translate-toggle-row {
+            display: flex; align-items: center; gap: 10px;
+            margin-bottom: 12px; padding: 10px 14px;
+            background: #fafbff; border-radius: 8px; border: 1px solid #e8ecf5;
+        }
+        .translate-toggle-row label.toggle-label {
+            font-size: 13px; color: #4e5969; cursor: pointer;
+            user-select: none; display: flex; align-items: center; gap: 8px;
+        }
+        .toggle-switch {
+            position: relative; width: 44px; height: 24px; cursor: pointer;
+            display: inline-block; vertical-align: middle;
+        }
+        .toggle-switch input { opacity: 0; width: 0; height: 0; }
+        .toggle-slider {
+            position: absolute; inset: 0; background: #c0c4cc; border-radius: 24px;
+            transition: background 0.25s; cursor: pointer;
+        }
+        .toggle-slider::before {
+            content: ""; position: absolute; left: 3px; top: 3px;
+            width: 18px; height: 18px; background: #fff; border-radius: 50%;
+            transition: transform 0.25s; box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+        }
+        .toggle-switch input:checked + .toggle-slider { background: #4c6ef5; }
+        .toggle-switch input:checked + .toggle-slider::before { transform: translateX(20px); }
+        .toggle-status { font-size: 13px; font-weight: 500; min-width: 32px; }
+        .toggle-status.on { color: #4c6ef5; }
+        .toggle-status.off { color: #a9afba; }
+        /* 翻译预览区域 */
+        .semantic-preview {
+            margin-bottom: 12px; padding: 10px 14px;
+            background: #fff8e1; border-radius: 8px; border: 1px solid #ffe082;
+            font-size: 12px; color: #6b7280; display: none; line-height: 1.6;
+            word-break: break-all;
+        }
+        .semantic-preview .preview-title { font-weight: 600; color: #f57f17; margin-bottom: 4px; }
+        .semantic-preview .preview-term { display: inline-block; background: #fff3cd; color: #e65100;
+            padding: 1px 6px; border-radius: 4px; margin: 1px 2px; font-size: 11px; }
+        .semantic-preview .no-match { color: #a9afba; }
+
         /* ---- 部分优化标签 ---- */
         .tag.partial-optimized { background: #fff0e6; color: #e8850c; }
     </style>
@@ -314,9 +355,23 @@
                 <div class="input-group">
                     <label for="prompt">输入设计需求（中文）：</label>
                     <textarea id="prompt" placeholder="例如：简约风格，圆柱形，透明玻璃，适合咖啡饮用..."></textarea>
-                    <div id="translateHint" style="font-size:12px;color:#4caf50;margin-top:4px;display:none;">
-                        🌐 检测到中文，将自动翻译为英文后生成
-                    </div>
+                </div>
+                <!-- 中文→英文自动翻译开关 -->
+                <div class="translate-toggle-row">
+                    <label class="toggle-label" for="autoTranslateToggle">
+                        <span class="toggle-switch">
+                            <input type="checkbox" id="autoTranslateToggle" checked>
+                            <span class="toggle-slider"></span>
+                        </span>
+                        <span>中文自动翻译</span>
+                    </label>
+                    <span class="toggle-status on" id="toggleStatus">开启</span>
+                    <span style="font-size:11px;color:#a9afba;margin-left:4px;">关闭后将跳过 Bing/Google 翻译检测，仅保留语义映射结果</span>
+                </div>
+                <!-- 语义映射预览区域（始终显示，因为映射始终执行） -->
+                <div class="semantic-preview" id="semanticPreview">
+                    <div class="preview-title">语义映射预览：</div>
+                    <div id="semanticPreviewContent"></div>
                 </div>
                 <!-- LoRA 控制区 -->
                 <div class="lora-section">
@@ -557,7 +612,71 @@
             paretoChart = echarts.init(document.getElementById('paretoChart'));
         }
 
-        // LoRA 开关联动禁用状态
+        // ─── 中文自动翻译开关（控制 Bing/Google 翻译检测）────────
+        // 注意：心理语义+杯型映射始终执行，不受此开关影响
+        let autoTranslateEnabled = true;
+        let previewTimer = null;
+
+        const autoTranslateToggle = document.getElementById('autoTranslateToggle');
+        const toggleStatus = document.getElementById('toggleStatus');
+        const semanticPreview = document.getElementById('semanticPreview');
+        const semanticPreviewContent = document.getElementById('semanticPreviewContent');
+
+        autoTranslateToggle.addEventListener('change', function() {
+            autoTranslateEnabled = this.checked;
+            toggleStatus.textContent = this.checked ? '开启' : '关闭';
+            toggleStatus.className = 'toggle-status ' + (this.checked ? 'on' : 'off');
+        });
+
+        /** 请求后端语义映射预览（始终执行，不受翻译开关影响） */
+        async function fetchSemanticPreview(prompt) {
+            if (!prompt) {
+                semanticPreview.style.display = 'none';
+                return;
+            }
+            try {
+                const resp = await fetch('/api/semantic/preview', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ prompt })
+                });
+                const data = await resp.json();
+                if (data.success) {
+                    if (data.has_match) {
+                        const termTags = data.matched_terms.map(t =>
+                            `<span class="preview-term">${t}</span>`
+                        ).join(' ');
+                        semanticPreviewContent.innerHTML =
+                            `<strong>匹配语义词：</strong>${termTags}<br><strong>替换后：</strong>${escapeHtml(data.processed)}`;
+                        semanticPreview.style.display = 'block';
+                    } else {
+                        semanticPreviewContent.innerHTML = '<span class="no-match">未检测到心理语义词或杯型名称，保持原文输出</span>';
+                        semanticPreview.style.display = 'block';
+                    }
+                }
+            } catch {
+                semanticPreview.style.display = 'none';
+            }
+        }
+
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        /** 用户输入时防抖更新语义映射预览 */
+        function updateSemanticPreview() {
+            clearTimeout(previewTimer);
+            const prompt = document.getElementById('prompt').value.trim();
+            if (!prompt) {
+                semanticPreview.style.display = 'none';
+                return;
+            }
+            previewTimer = setTimeout(() => fetchSemanticPreview(prompt), 400);
+        }
+
+        document.getElementById('prompt').addEventListener('input', updateSemanticPreview);
         document.getElementById('loraToggle').addEventListener('change', function() {
             const row = document.getElementById('loraWeightRow');
             const modelSelect = document.getElementById('loraModelSelect');
@@ -659,6 +778,7 @@
                     const loraModel = loraEnabled ? document.getElementById('loraModelSelect').value : null;
                     fd.append('lora_weight', loraWeight);
                     fd.append('lora_model', loraModel);
+                    fd.append('auto_translate', autoTranslateEnabled);
 
                     response = await fetch('/api/img2img', { method: 'POST', body: fd });
                     data = await response.json();
@@ -670,7 +790,7 @@
                     response = await fetch('/api/generate', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ prompt, lora_weight: loraWeight, sampler_name: samplerName, lora_model: loraModel })
+                        body: JSON.stringify({ prompt, lora_weight: loraWeight, sampler_name: samplerName, lora_model: loraModel, auto_translate: autoTranslateEnabled })
                     });
                     data = await response.json();
                 }
@@ -1396,14 +1516,6 @@
             const slider = document.getElementById('denoisingStrength');
             const sliderVal = document.getElementById('strengthValue');
             slider.addEventListener('input', () => { sliderVal.textContent = slider.value; });
-
-            // 中文输入检测 → 显示翻译提示
-            const promptEl = document.getElementById('prompt');
-            const hintEl = document.getElementById('translateHint');
-            promptEl.addEventListener('input', () => {
-                const hasChinese = /[\u4e00-\u9fff\u3400-\u4dbf]/.test(promptEl.value);
-                hintEl.style.display = hasChinese ? 'block' : 'none';
-            });
 
             // 起始图源切换
             document.querySelectorAll('input[name="init_source"]').forEach(r => {
